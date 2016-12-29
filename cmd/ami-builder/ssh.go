@@ -7,6 +7,8 @@ import (
 
 	"time"
 
+	"log"
+
 	"github.com/tmc/scp"
 	"golang.org/x/crypto/ssh"
 )
@@ -44,6 +46,7 @@ func install(user string, ip string, key []byte) error {
 		if err == nil {
 			break
 		}
+		log.Println("SSH not available. Waiting...")
 		time.Sleep(10 * time.Second)
 	}
 	if err != nil {

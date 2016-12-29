@@ -10,6 +10,8 @@ import (
 
 	cli "gopkg.in/urfave/cli.v1"
 
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -39,7 +41,7 @@ func main() {
 		cli.StringFlag{
 			Name:   "name, n",
 			Value:  "CentOS 7.3",
-			Usage:  "subnet-id",
+			Usage:  "snapshot name",
 			EnvVar: "AMI_NAME"},
 		cli.StringFlag{
 			Name:   "size, s",
@@ -51,6 +53,11 @@ func main() {
 			Value:  "ami-9be6f38c",
 			Usage:  "bootstrap machine AMI",
 			EnvVar: "AMI_IMAGE"},
+		cli.BoolFlag{
+			Name:   "private",
+			Usage:  "connect to bootstrap machine via private IP",
+			EnvVar: "AMI_PRIVATE",
+		},
 	}
 	app.Action = func(c *cli.Context) error {
 		subnet := c.GlobalString("subnet")
@@ -60,6 +67,7 @@ func main() {
 		amiName := c.GlobalString("name")
 		imageID := c.GlobalString("ami")
 		size := c.GlobalString("size")
+		private := c.GlobalBool("private")
 		sess, err := session.NewSession()
 		if err != nil {
 			return err
@@ -110,17 +118,21 @@ func main() {
 		if err != nil {
 			return err
 		}
-		// This is the private key
-		fmt.Println(*resp.KeyMaterial)
 		// Provision a machine named bootstrap-Somenumber
 		instanceParams := &ec2.RunInstancesInput{
-			KeyName:          aws.String(keyName),
-			ImageId:          aws.String(imageID),
-			InstanceType:     aws.String(size),
-			MaxCount:         aws.Int64(1),
-			MinCount:         aws.Int64(1),
-			SubnetId:         aws.String(subnet),
-			SecurityGroupIds: []*string{sg.GroupId},
+			KeyName:      aws.String(keyName),
+			ImageId:      aws.String(imageID),
+			InstanceType: aws.String(size),
+			MaxCount:     aws.Int64(1),
+			MinCount:     aws.Int64(1),
+			NetworkInterfaces: []*ec2.InstanceNetworkInterfaceSpecification{
+				&ec2.InstanceNetworkInterfaceSpecification{
+					AssociatePublicIpAddress: aws.Bool(!private),
+					DeviceIndex:              aws.Int64(0),
+					SubnetId:                 aws.String(subnet),
+					Groups:                   []*string{sg.GroupId},
+				},
+			},
 		}
 		result, err := ec2Service.RunInstances(instanceParams)
 		if err != nil {
@@ -155,9 +167,29 @@ func main() {
 		if err != nil {
 			return err
 		}
+		var ipAddress string
+		if private {
+			ipAddress = *instance.PrivateIpAddress
+		} else {
+			log.Println("Waiting for public IP")
+			for i := 0; i < 10; i = i + 1 {
+				interfaceDetails, err := ec2Service.DescribeNetworkInterfaces(&ec2.DescribeNetworkInterfacesInput{
+					NetworkInterfaceIds: []*string{instance.NetworkInterfaces[0].NetworkInterfaceId},
+				})
+				if err != nil {
+					return err
+				}
+				iface := interfaceDetails.NetworkInterfaces[0]
+				if iface.Association != nil && iface.Association.PublicIp != nil {
+					ipAddress = *iface.Association.PublicIp
+					break
+				}
+				time.Sleep(10 * time.Second)
+			}
+		}
 
 		// Copy shell script to VM and install OS
-		err = install("ec2-user", *instance.PrivateIpAddress, []byte(*resp.KeyMaterial))
+		err = install("ec2-user", ipAddress, []byte(*resp.KeyMaterial))
 		if err != nil {
 			return err
 		}
