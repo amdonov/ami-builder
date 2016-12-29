@@ -41,7 +41,7 @@ func main() {
 		cli.StringFlag{
 			Name:   "name, n",
 			Value:  "CentOS 7.3",
-			Usage:  "snapshot name",
+			Usage:  "ami and snapshot name",
 			EnvVar: "AMI_NAME"},
 		cli.StringFlag{
 			Name:   "size, s",
@@ -238,7 +238,34 @@ func main() {
 		_, err = ec2Service.DeleteVolume(&ec2.DeleteVolumeInput{
 			VolumeId: volResult.VolumeId,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+
+		// Register the AMI
+		regResult, err := ec2Service.RegisterImage(&ec2.RegisterImageInput{
+			Name:               aws.String(amiName),
+			Description:        aws.String(amiName),
+			Architecture:       aws.String("x86_64"),
+			RootDeviceName:     aws.String("/dev/sda1"),
+			VirtualizationType: aws.String("hvm"),
+			BlockDeviceMappings: []*ec2.BlockDeviceMapping{
+				{ // Required
+					DeviceName: aws.String("/dev/sda1"),
+					Ebs: &ec2.EbsBlockDevice{
+						DeleteOnTermination: aws.Bool(true),
+						SnapshotId:          snapshot.SnapshotId,
+						VolumeSize:          aws.Int64(20),
+						VolumeType:          aws.String("gp2"),
+					},
+				},
+			},
+		})
+		if err != nil {
+			return err
+		}
+		log.Printf("AMI registered with id of %s", *regResult.ImageId)
+		return nil
 	}
 	app.Run(os.Args)
 

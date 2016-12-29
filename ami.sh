@@ -1,4 +1,4 @@
-yum install -y xfsprogs MAKEDEV
+yum install -y xfsprogs
 mv /etc/yum.repos.d/* ~/
 
 # Create the filesystems 
@@ -36,13 +36,13 @@ mkdir -p /mnt/ec2-image/var/log/audit
 mount /dev/mapper/ami-var_log_audit /mnt/ec2-image/var/log/audit
 mount /dev/xvdf1 /mnt/ec2-image/boot 
  
-# makedev 
+# make devices
 mkdir -p /mnt/ec2-image/{dev,etc,proc,sys}
 mkdir -p /mnt/ec2-image/var/{cache,log,lock,lib/rpm}
-/sbin/MAKEDEV -d /mnt/ec2-image/dev -x console
-/sbin/MAKEDEV -d /mnt/ec2-image/dev -x null
-/sbin/MAKEDEV -d /mnt/ec2-image/dev -x zero
-/sbin/MAKEDEV -d /mnt/ec2-image/dev -x urandom
+mknod -m 622 /mnt/ec2-image/dev/console c 5 1
+mknod -m 666 /mnt/ec2-image/dev/null c 1 3
+mknod -m 666 /mnt/ec2-image/dev/zero c 1 5
+mknod -m 444 /mnt/ec2-image/dev/urandom c 1 9
 mount -o bind /dev /mnt/ec2-image/dev
 mount -o bind /dev/pts /mnt/ec2-image/dev/pts
 mount -o bind /dev/shm /mnt/ec2-image/dev/shm
