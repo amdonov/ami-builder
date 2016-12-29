@@ -7,6 +7,10 @@ import (
 
 	"github.com/amdonov/ami-builder/ami"
 
+	"io/ioutil"
+
+	"encoding/base64"
+
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -78,6 +82,10 @@ func main() {
 				if "" == rpm {
 					return errors.New("rpm is required")
 				}
+				data, err := ioutil.ReadFile("cloud-data.yml")
+				if err != nil {
+					return err
+				}
 				// Confirm that the file is there to save some time
 				if _, err := os.Stat(rpm); os.IsNotExist(err) {
 					return fmt.Errorf("file path %s does not exist", rpm)
@@ -88,7 +96,8 @@ func main() {
 					ImageID:     c.GlobalString("ami"),
 					Size:        c.GlobalString("size"),
 					Private:     c.GlobalBool("private"),
-					Provisioner: ami.NewCloudInitProvisioner(c.GlobalString("user")),
+					UserData:    base64.StdEncoding.EncodeToString(data),
+					Provisioner: ami.NewProvClientProvisioner(c.GlobalString("user"), rpm),
 				}
 				return ami.CreateAMI(config)
 			},

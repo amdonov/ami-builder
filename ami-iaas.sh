@@ -94,7 +94,7 @@ yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y install @core kerne
 # Install and Configure prov-client
 yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y install /tmp/prov-client.rpm 
 cat <<EOF > /mnt/ec2-image/etc/sysconfig/prov-client
-SERVER=10.16.0.31
+SERVER=172.31.32.168
 EOF
 
 # Configure networking 
@@ -138,6 +138,7 @@ chroot /mnt/ec2-image systemctl enable oddjobd
 chroot /mnt/ec2-image history -c
  
 yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y clean all
+umount /mnt/ec2-image/sys/fs/selinux
 umount /mnt/ec2-image/dev/shm
 umount /mnt/ec2-image/dev/pts
 umount /mnt/ec2-image/dev

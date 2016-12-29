@@ -1,0 +1,42 @@
+# AMI Builder
+
+Utility to fully automate the creation of CentOS-based AMIs.
+
+## Preparation
+
+The application uses the AWS-SDK and uses its configuration options for defining regions, credentials, etc. Assuming you have credentials stored in ~/.aws/credentials, you probably just need to specify AWS_REGION and AWS_PROFILE. Read the AWS documentation for more guidance.
+
+----
+export AWS_REGION=us-gov-west-1
+export AWS_PROFILE=dpp
+----
+
+## Usage
+
+You need to make the cloud-init image first. That's the image that will be used to install any intial VMs such as basic infrastructure and the provisioning server. Once those resources are in place you can provision VMs using the prov-client AMI. 
+
+### Cloud Init
+
+This AMI can be created using a recent Amazon Linux AMI as the base. It's not the fastest AMI in the world and isn't well suited for IAAS usage. One reason is that an SE Linux relabel is performed on the initial boot. It includes puppet agent 4.x, ipa client, and SCAP software. SCAP remediation has not been performed.
+
+Sample Usage is provided below
+
+----
+ami-builder --subnet subnet-fcfbcd88 --ami ami-7cb1091d --name "Centos 7.3 cloud-init" cloud-init
+----
+
+### Provision Client
+
+Cloud init is fine, but it's often better to have an external server configure a new machine that have it configure itself. You don't want users provide cloud-init data directly because it can be complex and/or they can break things. Third-party tools can speak to AWS on your behalf. Foreman is OK in this role, but we found that it didn't provide enough flexibility. Creating new profiles for each OS, machine size, or networking configuration was too hard. Instead we create an AMI with a small client that phones home to a provisioning server at launch. The provision server provides an SSH key and proceeds to use Ansible for machine configuration. Ansible running on a dedicated server centralizing updates, protects credentials, and supports more orchestration options that cloud-init.
+
+Additional steps are performed on this AMI to accelerate start up. SCAP hardening is performed as is an SE Linux relabel. Enabling the relabel requires the use of VM that's running SE Linux to bootstrap. Amazon Linux AMIs do not. However, you can use the cloud-init image created previously or a RHEL image.
+
+----
+ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --name "Centos 7.3 prov-client" --user booz-user prov-client --rpm  provision-client-0.1.4-1.git.13.8a9878aNone.x86_64.rpm
+----
+
+### Tailoring
+
+Most of the work is performed with two BASH scripts, ami.sh and ami-iaas.sh, for cloud-init and prov-client respectively. In addition, prov-client expects to use the cloud-init AMI as a base image and includes minimal cloud-init data in cloud-data.yml. You made need to modify these for your environment. This is particularly true for offline installations where the yum repos will need to point to local copies of the required RPMS.
+
+The ami-iaas.sh file will definitely need to be tweaked as it includes the IP address of the provisioning-server. It must be updated per environment.

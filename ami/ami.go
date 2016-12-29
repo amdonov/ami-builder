@@ -24,6 +24,7 @@ type Config struct {
 	Name        string
 	ImageID     string
 	Size        string
+	UserData    string
 	Private     bool
 }
 
@@ -106,6 +107,9 @@ func CreateAMI(config *Config) error {
 				Groups:                   []*string{sg.GroupId},
 			},
 		},
+	}
+	if config.UserData != "" {
+		instanceParams.SetUserData(config.UserData)
 	}
 	result, err := ec2Service.RunInstances(instanceParams)
 	if err != nil {
