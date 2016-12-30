@@ -1,6 +1,7 @@
 package ami
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/tmc/scp"
@@ -8,12 +9,13 @@ import (
 )
 
 type provClient struct {
-	user string
-	rpm  string
+	user   string
+	rpm    string
+	server string
 }
 
-func NewProvClientProvisioner(user, rpm string) Provisioner {
-	return &provClient{user, rpm}
+func NewProvClientProvisioner(user, rpm, server string) Provisioner {
+	return &provClient{user, rpm, server}
 }
 
 func (c *provClient) Provision(ip string, key []byte) error {
@@ -36,6 +38,6 @@ func (c *provClient) Provision(ip string, key []byte) error {
 	}
 	return runCommand(client, func(session *ssh.Session) error {
 		session.Stdout = os.Stdout
-		return session.Run("sudo /bin/bash ./ami.sh")
+		return session.Run(fmt.Sprintf("sudo /bin/bash ./ami.sh %s", c.server))
 	})
 }

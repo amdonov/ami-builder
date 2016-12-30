@@ -17,7 +17,7 @@ import (
 func main() {
 	app := cli.NewApp()
 	app.Name = "ami-builder"
-	app.Version = "0.1.0"
+	app.Version = "0.2.0"
 	app.Usage = "create RHEL/CentOS-based AMI"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -76,11 +76,20 @@ func main() {
 					Value: "",
 					Usage: "path to provision-client RPM",
 				},
+				cli.StringFlag{
+					Name:  "server",
+					Value: "",
+					Usage: "IP address of provision server",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				rpm := c.String("rpm")
+				server := c.String("server")
 				if "" == rpm {
-					return errors.New("rpm is required")
+					return errors.New("rpm argument is required")
+				}
+				if "" == server {
+					return errors.New("server argument is required")
 				}
 				data, err := ioutil.ReadFile("cloud-data.yml")
 				if err != nil {
@@ -97,7 +106,7 @@ func main() {
 					Size:        c.GlobalString("size"),
 					Private:     c.GlobalBool("private"),
 					UserData:    base64.StdEncoding.EncodeToString(data),
-					Provisioner: ami.NewProvClientProvisioner(c.GlobalString("user"), rpm),
+					Provisioner: ami.NewProvClientProvisioner(c.GlobalString("user"), rpm, server),
 				}
 				return ami.CreateAMI(config)
 			},
