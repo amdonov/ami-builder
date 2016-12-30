@@ -29,13 +29,7 @@ ami-builder --subnet subnet-fcfbcd88 --ami ami-7cb1091d --name "Centos 7.3 cloud
 
 Cloud init is fine, but it's often better to have an external server configure a new machine that have it configure itself. You don't want users provide cloud-init data directly because it can be complex and/or they can break things. Third-party tools can speak to AWS on your behalf. Foreman is OK in this role, but we found that it didn't provide enough flexibility. Creating new profiles for each OS, machine size, or networking configuration was too hard. Instead we create an AMI with a small client that phones home to a provisioning server at launch. The provision server provides an SSH key and proceeds to use Ansible for machine configuration. Ansible running on a dedicated server centralizing updates, protects credentials, and supports more orchestration options that cloud-init.
 
-Additional steps are performed on this AMI to accelerate start up. Such as SE Linux relabel. Enabling the relabel requires the use of VM that's running SE Linux to bootstrap. Amazon Linux AMIs do not. However, you can use the cloud-init image created previously or a RHEL image.
-
-SCAP is not running as part of the provisioning process at this point. There are some issues that I could not overcome. Including creation of an invalid SSH configuration.
-
-https://github.com/OpenSCAP/scap-security-guide/issues/1435
-
-It's flagged as closed, but the latest release didn't work.
+Additional steps are performed on this AMI to accelerate start up. Such as SCAP-based hardening and an SE Linux relabel. Enabling the relabel requires the use of VM that's running SE Linux to bootstrap. Amazon Linux AMIs do not. However, you can use the cloud-init image created previously or a RHEL image.
 
 ----
 ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --name "Centos 7.3 prov-client" --user booz-user prov-client --rpm  provision-client-0.1.4-1.git.13.8a9878aNone.x86_64.rpm --server 172.31.32.198
