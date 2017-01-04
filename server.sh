@@ -110,6 +110,20 @@ cat > resolv.conf.j2 << EOF
 nameserver {{ ipaserver_ip }}
 EOF
 
+# Create Hammer template
+cat > cli_config.yml.j2 << EOF
+:modules:
+    - hammer_cli_foreman
+
+:foreman:
+    :host: 'https://{{ fqdn }}/'
+    :username: 'admin'
+    :password: '{{ admin_password }}'
+
+:log_dir: '~/.foreman/log'
+:log_level: 'error'
+EOF
+
 # Create ansible playbook
 cat > start.yml << EOF
 ---
@@ -316,9 +330,12 @@ cat > start.yml << EOF
      args:
        creates: /etc/ipa/default.conf
 
-- name: Configure IPA Replica
+- name: Configure IPA clients
   hosts:
    - ipa_replica
+   - foreman
+   - ansible
+   - jump
   vars:
    ipaserver_ip: "{{ groups.ipa_master[0] }}"
   tasks:
@@ -338,18 +355,103 @@ cat > start.yml << EOF
      become: yes
      command: ipa-client-install --mkhomedir --principal=admin --password={{ admin_password }} --unattended
      args:
-       creates: /etc/ipa/default.conf
+       creates: /etc/ipa/default.conf          
 
+- name: Configure IPA Replica
+  hosts:
+   - ipa_replica
+  tasks:
    - name: Configure replica
      become: yes
      command: ipa-replica-install --setup-ca --setup-dns --forwarder={{ dns_forwarder }} --unattended --password={{ ds_password }} --admin-password={{ admin_password }} --mkhomedir
-#     args:
-#       creates: /etc/ipa/default.conf     
+     args:
+       creates: /etc/systemd/system/multi-user.target.wants/ipa.service     
 
 - hosts: foreman
   gather_facts: false
   tasks:
-   - debug: var=fqdn
+   - name: Install Foreman Repos
+     become: yes
+     yum: name={{ item }} state=present
+     with_items:
+      - https://yum.puppetlabs.com/puppetlabs-release-pc1-el-7.noarch.rpm
+      - epel-release
+      - https://yum.theforeman.org/releases/1.13/el7/x86_64/foreman-release.rpm
+  
+   - name: Install Foreman Installer
+     become: yes
+     yum: name={{ item }} state=present
+     with_items:
+      - foreman-installer
+      - ipa-admintools
+      - httpd
+  
+   - name: Trust IPA certificates
+     become: yes
+     copy:
+      remote_src: True
+      src: /etc/ipa/ca.crt
+      dest: /etc/pki/ca-trust/source/anchors/ca.crt
+     register: copy
+
+   - name: Update Trust
+     become: yes
+     command: update-ca-trust
+     when: copy.changed
+
+   - name: Create HTTP Service Principal
+     become: yes
+     shell: echo "{{ admin_password }}" | kinit admin && ipa service-add "HTTP/{{ fqdn }}" && ipa-getkeytab -k /etc/http.keytab -p "HTTP/{{ fqdn }}"
+     args:
+      creates: /etc/http.keytab
+
+   - name: Set keytab permissions
+     become: yes
+     file:
+       path: /etc/http.keytab
+       owner: apache
+       group: apache
+       mode: 600
+ 
+   - name: Open Firewall Services
+     become: yes
+     firewalld: service={{ item }} permanent=true state=enabled immediate=true
+     with_items:
+      - http
+      - https
+
+   - name: Open Firewall Ports
+     become: yes
+     firewalld: port={{ item }} permanent=true state=enabled immediate=true
+     with_items:
+      - 8140/tcp
+      - 8443/tcp
+
+# Install Foreman
+# foreman-installer --foreman-admin-password {{ admin_password }} --enable-foreman-proxy-plugin-openscap --enable-foreman-plugin-openscap --foreman-ipa-authentication=true --foreman-organizations-enabled=true --foreman-locations-enabled=true --foreman-initial-location=us-east-1 --foreman-initial-organization=BAH --enable-foreman-proxy          
+
+   - name: Create realm-proxy
+     become: yes
+     shell: echo -n "{{ admin_password }}" | foreman-prepare-realm admin realm-proxy && cp freeipa.keytab /etc/foreman-proxy/ && rm -f freeipa.keytab && chown foreman-proxy /etc/foreman-proxy/freeipa.keytab && chmod 600 /etc/foreman-proxy/freeipa.keytab
+     args:
+      creates: /etc/foreman-proxy/freeipa.keytab
+
+   - name: Install Puppet Modules
+     command: puppet module install -i /etc/puppetlabs/code/environments/production/modules {{ item }}
+     with_items:
+      - puppetlabs/ntp
+      - wdijkerman/zabbix
+      - saz/resolv_conf
+      - jlambert121-yum
+      - treydock-yum_cron
+      - isimluk-foreman_scap_client
+     args:
+      creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp                            
+   
+   - name: Configure Hammer
+     template:
+       src: cli_config.yml.j2
+       dest: "/home/{{ ansible_ssh_user }}/.hammer/cli_config.yml"
 
 - hosts: ansible
   gather_facts: false
