@@ -6,11 +6,13 @@ import (
 	"os"
 
 	"github.com/amdonov/ami-builder/ami"
+	"github.com/amdonov/ami-builder/ansible"
 
 	"io/ioutil"
 
 	"encoding/base64"
 
+	"github.com/amdonov/ami-builder/instance"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -56,15 +58,55 @@ func main() {
 			Name:  "cloud-init",
 			Usage: "create a cloud-init based AMI",
 			Action: func(c *cli.Context) error {
-				config := &ami.Config{
-					Subnet:      c.GlobalString("subnet"),
-					Name:        c.GlobalString("name"),
-					ImageID:     c.GlobalString("ami"),
-					Size:        c.GlobalString("size"),
-					Private:     c.GlobalBool("private"),
-					Provisioner: ami.NewCloudInitProvisioner(c.GlobalString("user")),
+				config := &instance.Config{
+					Subnet:  c.GlobalString("subnet"),
+					Name:    c.GlobalString("name"),
+					ImageID: c.GlobalString("ami"),
+					Size:    c.GlobalString("size"),
+					Private: c.GlobalBool("private"),
 				}
-				return ami.CreateAMI(config)
+				return ami.CreateAMI(config, ami.NewCloudInitProvisioner(c.GlobalString("user")))
+			},
+		},
+		{
+			Name:  "prov-server",
+			Usage: "create a prov-server instance and core infrastructure",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "rpm",
+					Value: "",
+					Usage: "path to provision-server RPM",
+				},
+				cli.StringFlag{
+					Name:  "iam",
+					Value: "ansible",
+					Usage: "IAM role name for provision-server",
+				},
+			},
+			Action: func(c *cli.Context) error {
+				rpm := c.String("rpm")
+				if "" == rpm {
+					return errors.New("rpm argument is required")
+				}
+				data, err := ioutil.ReadFile("cloud-data.yml")
+				if err != nil {
+					return err
+				}
+				// Confirm that the file is there to save some time
+				if _, err := os.Stat(rpm); os.IsNotExist(err) {
+					return fmt.Errorf("file path %s does not exist", rpm)
+				}
+				config := &instance.Config{
+					Subnet:   c.GlobalString("subnet"),
+					Name:     c.GlobalString("name"),
+					ImageID:  c.GlobalString("ami"),
+					Size:     c.GlobalString("size"),
+					Private:  c.GlobalBool("private"),
+					IAMRole:  c.String("iam"),
+					UserData: base64.StdEncoding.EncodeToString(data),
+				}
+				return ansible.CreateProvisionServer(config,
+					ansible.NewAnsibleProvisioner(c.GlobalString("user"), rpm))
 			},
 		},
 		{
@@ -99,16 +141,15 @@ func main() {
 				if _, err := os.Stat(rpm); os.IsNotExist(err) {
 					return fmt.Errorf("file path %s does not exist", rpm)
 				}
-				config := &ami.Config{
-					Subnet:      c.GlobalString("subnet"),
-					Name:        c.GlobalString("name"),
-					ImageID:     c.GlobalString("ami"),
-					Size:        c.GlobalString("size"),
-					Private:     c.GlobalBool("private"),
-					UserData:    base64.StdEncoding.EncodeToString(data),
-					Provisioner: ami.NewProvClientProvisioner(c.GlobalString("user"), rpm, server),
+				config := &instance.Config{
+					Subnet:   c.GlobalString("subnet"),
+					Name:     c.GlobalString("name"),
+					ImageID:  c.GlobalString("ami"),
+					Size:     c.GlobalString("size"),
+					Private:  c.GlobalBool("private"),
+					UserData: base64.StdEncoding.EncodeToString(data),
 				}
-				return ami.CreateAMI(config)
+				return ami.CreateAMI(config, ami.NewProvClientProvisioner(c.GlobalString("user"), rpm, server))
 			},
 		},
 	}
