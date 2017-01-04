@@ -10,6 +10,8 @@ admin_password: password123
 ds_password: password123
 dns_forwarder: 10.208.86.2
 realm: LIN.GFCLAB.COM
+ansible_ssh_private_key_file: files/ansible.pem
+ansible_ssh_user: booz-user
 userdata: |
        #cloud-config
        hostname: {{ item.hostname }}
@@ -103,6 +105,11 @@ vms:
           iam:                      
 EOF
 
+# Create DNS template
+cat > resolv.conf.j2 << EOF
+nameserver {{ ipaserver_ip }}
+EOF
+
 # Create ansible playbook
 cat > start.yml << EOF
 ---
@@ -118,6 +125,19 @@ cat > start.yml << EOF
       cidr: "{{ facter_ec2_metadata.network.interfaces.macs[facter_ec2_metadata.mac]['vpc-ipv4-cidr-block'] }}"
       subnet: "{{ facter_ec2_metadata.network.interfaces.macs[facter_ec2_metadata.mac]['subnet-id'] }}"
       region: "{{ ansible_ec2_placement_region }}"
+
+   - name: Create a new keypair
+     ec2_key:
+        name: ansible
+        region: "{{ region }}"
+     register: keypair
+
+   - name: Save private key
+     copy:
+        dest: files/ansible.pem
+        content: "{{ keypair.key.private_key }}"
+        mode: 0600
+     when: keypair.changed    
  
    - name: Create Jump Server Security Group
      ec2_group:
@@ -253,7 +273,7 @@ cat > start.yml << EOF
       hostname: "{{ item.tagged_instances[0].private_ip }}"
       groups: "{{ item.item.role }}"
       fqdn: "{{ item.item.fqdn}}"
-     with_items: "{{ instances.results }}"
+     with_items: "{{ instances.results }}"   
 
 - name: Install IPA
   hosts: 
@@ -261,10 +281,18 @@ cat > start.yml << EOF
    - ipa_replica
   gather_facts: false
   tasks:
+   - name: Wait for SSH
+     local_action: 
+      module: wait_for
+      port: 22 
+      host: "{{ inventory_hostname }}"
+
    - name: Install IPA
      become: yes
      yum: name={{ item }} state=present
-     with_items: ipaserver_packages
+     with_items:
+      - ipa-server
+      - ipa-server-dns
    - name: Open Firewall
      become: yes
      firewalld: service={{ item }} permanent=true state=enabled immediate=true
@@ -284,24 +312,9 @@ cat > start.yml << EOF
   tasks:
    - name: Run Installer
      become: yes
-     command: ipa-server-install --mkhomedir --setup-dns --forwarder={{ dns_forwarder }} --unattended --ds-password={{ ds_password }} --hostname={{ fqdn }} --admin-password={{ admin_password }} --realm={{ realm }} --ip-address={{ ansible_hostname }}
+     command: ipa-server-install --mkhomedir --setup-dns --forwarder={{ dns_forwarder }} --unattended --ds-password={{ ds_password }} --hostname={{ fqdn }} --admin-password={{ admin_password }} --realm={{ realm }} --ip-address={{ inventory_hostname }}
      args:
        creates: /etc/ipa/default.conf
-
-   - name: Create Replica File
-     become: yes
-     command: ipa-replica-prepare {{ hostvars[item].fqdn }} --ip-address {{ item }} --password {{ ds_password }}
-     args:
-       creates:  /var/lib/ipa/replica-info-{{ hostvars[item].fqdn }}.gpg
-     with_items: groups.ipa_replica
-
-   - name: Retrieve Replica File
-     become: yes
-     fetch:
-       src: /var/lib/ipa/replica-info-{{ hostvars[item].fqdn }}.gpg
-       dest: files/replica-info-{{ hostvars[item].fqdn }}.gpg
-       flat: yes
-     with_items: groups.ipa_replica
 
 - name: Configure IPA Replica
   hosts:
@@ -309,11 +322,6 @@ cat > start.yml << EOF
   vars:
    ipaserver_ip: "{{ groups.ipa_master[0] }}"
   tasks:
-   - name: Upload Replica File
-     become: yes
-     copy:
-       src: files/replica-info-{{ fqdn }}.gpg
-       dest: /root/replica.gpg
 
    - name: Set hostname
      become: yes
@@ -323,14 +331,20 @@ cat > start.yml << EOF
    - name: Set IPA as DNS
      become: yes
      template:
-       src: templates/resolv.conf.j2
+       src: resolv.conf.j2
        dest: /etc/resolv.conf
+
+   - name: Configure ipa client
+     become: yes
+     command: ipa-client-install --mkhomedir --principal=admin --password={{ admin_password }} --unattended
+     args:
+       creates: /etc/ipa/default.conf
 
    - name: Configure replica
      become: yes
-     command: ipa-replica-install --setup-ca --setup-dns --forwarder={{ dns_forwarder }} /root/replica.gpg --unattended --password={{ ds_password }} --admin-password={{ admin_password }} --mkhomedir
-     args:
-       creates: /etc/ipa/default.conf     
+     command: ipa-replica-install --setup-ca --setup-dns --forwarder={{ dns_forwarder }} --unattended --password={{ ds_password }} --admin-password={{ admin_password }} --mkhomedir
+#     args:
+#       creates: /etc/ipa/default.conf     
 
 - hosts: foreman
   gather_facts: false
