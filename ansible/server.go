@@ -14,12 +14,13 @@ import (
 )
 
 type ansible struct {
-	user string
-	rpm  string
+	user      string
+	clientRPM string
+	serverRPM string
 }
 
-func NewAnsibleProvisioner(user, rpm string) instance.Provisioner {
-	return &ansible{user, rpm}
+func NewAnsibleProvisioner(user, clientRPM, serverRPM string) instance.Provisioner {
+	return &ansible{user, clientRPM, serverRPM}
 }
 
 func (c *ansible) Provision(ip string, key []byte) error {
@@ -29,7 +30,9 @@ func (c *ansible) Provision(ip string, key []byte) error {
 	}
 	defer client.Close()
 	files := make(map[string]string)
-	files[c.rpm] = "/tmp/prov-server.rpm"
+	files[c.serverRPM] = "/tmp/prov-server.rpm"
+	files[c.clientRPM] = "/tmp/prov-client.rpm"
+
 	files["server.sh"] = "~/server.sh"
 	for src, dest := range files {
 		err = client.RunCommand(func(session *ssh.Session) error {

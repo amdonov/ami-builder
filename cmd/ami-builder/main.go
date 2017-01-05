@@ -73,9 +73,14 @@ func main() {
 			Usage: "create a prov-server instance and core infrastructure",
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  "rpm",
+					Name:  "server-rpm",
 					Value: "",
 					Usage: "path to provision-server RPM",
+				},
+				cli.StringFlag{
+					Name:  "client-rpm",
+					Value: "",
+					Usage: "path to client-server RPM",
 				},
 				cli.StringFlag{
 					Name:  "iam",
@@ -84,17 +89,24 @@ func main() {
 				},
 			},
 			Action: func(c *cli.Context) error {
-				rpm := c.String("rpm")
-				if "" == rpm {
-					return errors.New("rpm argument is required")
+				serverRPM := c.String("server-rpm")
+				if "" == serverRPM {
+					return errors.New("server-rpm argument is required")
+				}
+				clientRPM := c.String("client-rpm")
+				if "" == clientRPM {
+					return errors.New("client-rpm argument is required")
 				}
 				data, err := ioutil.ReadFile("cloud-data.yml")
 				if err != nil {
 					return err
 				}
 				// Confirm that the file is there to save some time
-				if _, err := os.Stat(rpm); os.IsNotExist(err) {
-					return fmt.Errorf("file path %s does not exist", rpm)
+				if _, err := os.Stat(serverRPM); os.IsNotExist(err) {
+					return fmt.Errorf("file path %s does not exist", serverRPM)
+				}
+				if _, err := os.Stat(clientRPM); os.IsNotExist(err) {
+					return fmt.Errorf("file path %s does not exist", clientRPM)
 				}
 				config := &instance.Config{
 					Subnet:   c.GlobalString("subnet"),
@@ -106,7 +118,7 @@ func main() {
 					UserData: base64.StdEncoding.EncodeToString(data),
 				}
 				return ansible.CreateProvisionServer(config,
-					ansible.NewAnsibleProvisioner(c.GlobalString("user"), rpm))
+					ansible.NewAnsibleProvisioner(c.GlobalString("user"), clientRPM, serverRPM))
 			},
 		},
 		{

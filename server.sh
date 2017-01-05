@@ -124,6 +124,20 @@ cat > cli_config.yml.j2 << EOF
 :log_level: 'error'
 EOF
 
+# Create provision-server configuration template
+cat > prov-server.toml.j2 << EOF
+[aws]
+region = "{{ region }}"
+
+[ansible]
+inventory = "/var/lib/prov-server/inventory"
+playbook = "/var/lib/prov-server/host.yml"
+
+[user]
+name = "{{ ansible_ssh_user }}"
+key = "{{ prov_key.stdout }}"
+EOF
+
 # Create ansible playbook
 cat > start.yml << EOF
 ---
@@ -287,6 +301,7 @@ cat > start.yml << EOF
       hostname: "{{ item.tagged_instances[0].private_ip }}"
       groups: "{{ item.item.role }}"
       fqdn: "{{ item.item.fqdn}}"
+      region: "{{ region }}"
      with_items: "{{ instances.results }}"   
 
 - name: Install IPA
@@ -427,8 +442,14 @@ cat > start.yml << EOF
       - 8140/tcp
       - 8443/tcp
 
-# Install Foreman
-# foreman-installer --foreman-admin-password {{ admin_password }} --enable-foreman-proxy-plugin-openscap --enable-foreman-plugin-openscap --foreman-ipa-authentication=true --foreman-organizations-enabled=true --foreman-locations-enabled=true --foreman-initial-location=us-east-1 --foreman-initial-organization=BAH --enable-foreman-proxy          
+   - name: Install Foreman
+     become: yes
+     shell: foreman-installer --foreman-admin-password {{ admin_password }} --enable-foreman-proxy-plugin-openscap --enable-foreman-plugin-openscap --foreman-ipa-authentication=true --foreman-organizations-enabled=true --foreman-locations-enabled=true --foreman-initial-location=us-east-1 --foreman-initial-organization=BAH --enable-foreman-proxy && touch /etc/foreman/.installed
+     environment:
+      LANG: "en_US.UTF-8"
+      LC_ALL: "en_US.UTF-8"
+     args:
+      creates: /etc/foreman/.installed         
 
    - name: Create realm-proxy
      become: yes
@@ -436,7 +457,31 @@ cat > start.yml << EOF
      args:
       creates: /etc/foreman-proxy/freeipa.keytab
 
+   - name: Check realm status
+     command: grep -c 'enabled: false' /etc/foreman-proxy/settings.d/realm.yml
+     changed_when: False
+     failed_when: False
+     register: realm
+
+   - name: Enable realm
+     shell: foreman-installer --foreman-proxy-realm-principal=realm-proxy@{{ realm }} --foreman-proxy-realm=true
+     environment:
+      LANG: "en_US.UTF-8"
+      LC_ALL: "en_US.UTF-8"
+     when: realm.stdout_lines[0] == '1'    
+
+   - name: Make Hammer Settings directory
+     file:
+       path: "/home/{{ ansible_ssh_user }}/.hammer"
+       state: directory                               
+   
+   - name: Configure Hammer
+     template:
+       src: cli_config.yml.j2
+       dest: "/home/{{ ansible_ssh_user }}/.hammer/cli_config.yml"
+
    - name: Install Puppet Modules
+     become: yes
      command: puppet module install -i /etc/puppetlabs/code/environments/production/modules {{ item }}
      with_items:
       - puppetlabs/ntp
@@ -445,18 +490,98 @@ cat > start.yml << EOF
       - jlambert121-yum
       - treydock-yum_cron
       - isimluk-foreman_scap_client
+     register: puppet
      args:
-      creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp                            
-   
-   - name: Configure Hammer
-     template:
-       src: cli_config.yml.j2
-       dest: "/home/{{ ansible_ssh_user }}/.hammer/cli_config.yml"
+      creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp  
 
-- hosts: ansible
+   - name: Import Puppet Classes
+     command: hammer proxy import-classes --environment production --id 1
+     when: puppet.changed
+
+   - name: Check for realm
+     shell: hammer realm list | grep -c {{ realm }}
+     changed_when: False
+     failed_when: False
+     register: realm
+   
+   - name: Create realm
+     command: hammer realm create --name {{ realm }} --realm-type FreeIPA --organizations BAH --locations {{ region }} --realm-proxy-id 1
+     when: realm.stdout_lines[0] == '1'
+
+- name: Configure Provision Server
+  hosts: ansible
   gather_facts: false
   tasks:
-   - debug: var=fqdn                 
+
+   - name: Install EPEL Repo
+     become: yes
+     yum: name=epel-release state=present
+
+   - name: Install Ansible
+     become: yes
+     yum: name=ansible state=present
+
+   - name: Copy Provision Server RPM
+     copy:
+       src: /tmp/prov-server.rpm
+       dest: /tmp/prov-server.rpm
+
+   - name: Install Provision Server
+     become: yes
+     yum: name={{ item }} state=present
+     with_items:
+      - /tmp/prov-server.rpm         
+
+   - name: Open Firewall Ports
+     become: yes
+     firewalld: port={{ item }} permanent=true state=enabled immediate=true
+     with_items:
+      - 8080/tcp
+
+   - name: Generate SSH key
+     become: yes
+     become_user: prov-server
+     shell: ssh-keygen -b 2048 -t rsa -f /var/lib/prov-server/.ssh/id_rsa -q -N ""
+     args:
+      creates: /var/lib/prov-server/.ssh/id_rsa
+
+   - name: Capture Public Key
+     become: yes
+     command: cat /var/lib/prov-server/.ssh/id_rsa.pub
+     register: prov_key
+
+   - name: Configure Provision Server
+     become: yes
+     template:
+       src: prov-server.toml.j2
+       dest: /etc/provision/prov-server.toml   
+
+   - name: Start and Enable Server
+     become: yes
+     service: 
+      name: prov-server 
+      state: started
+      enabled: yes
+
+- name: Install and Provision Client
+  hosts:
+   - foreman
+   - ipa_master
+   - ipa_replica
+   - jump
+   - ansible
+  gather_facts: false
+  tasks:
+   - name: Copy Provision Client RPM
+     copy:
+       src: /tmp/prov-client.rpm
+       dest: /tmp/prov-client.rpm
+   - name: Install Provision Client
+     become: yes
+     yum: name={{ item }} state=present
+     with_items:
+      - /tmp/prov-client.rpm       
+                           
 EOF
 export ANSIBLE_HOST_KEY_CHECKING=False
 ansible-playbook start.yml
