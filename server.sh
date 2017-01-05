@@ -512,24 +512,6 @@ cat > start.yml << EOF
        src: cli_config.yml.j2
        dest: "/home/{{ ansible_ssh_user }}/.hammer/cli_config.yml"
 
-   - name: Install Puppet Modules
-     become: yes
-     command: /opt/puppetlabs/bin/puppet module install -i /etc/puppetlabs/code/environments/production/modules {{ item }}
-     with_items:
-      - puppetlabs/ntp
-      - wdijkerman/zabbix
-      - saz/resolv_conf
-      - jlambert121-yum
-      - treydock-yum_cron
-      - isimluk-foreman_scap_client
-     register: puppet
-     args:
-      creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp  
-
-   - name: Import Puppet Classes
-     command: hammer proxy import-classes --id 1
-     when: puppet.changed
-
    - name: Check for realm
      shell: hammer realm list | grep -c {{ realm }}
      changed_when: False
@@ -548,7 +530,45 @@ cat > start.yml << EOF
    
    - name: Create hostgroup
      command: hammer hostgroup create --name infrastructure --environment production --puppet-ca-proxy {{ fqdn }} --puppet-proxy {{ fqdn }} --organizations {{ organization }} --locations {{ region }}
-     when: hostgroup_check.stdout_lines[0] == '0'     
+     when: hostgroup_check.stdout_lines[0] == '0'
+
+   - name: Check for domain
+     shell: hammer domain list | grep -c {{ domain }}
+     changed_when: False
+     failed_when: False
+     register: domain_check
+   
+   - name: Create domain
+     command: hammer domain create --name {{ domain }}  --organizations {{ organization }} --locations {{ region }}
+     when: domain_check.stdout_lines[0] == '0'
+
+   - name: Check for environment
+     shell: hammer environment list | grep -c production
+     changed_when: False
+     failed_when: False
+     register: env_check
+   
+   - name: Create environment
+     command: hammer environment create --name production  --organizations {{ organization }} --locations {{ region }}
+     when: env_check.stdout_lines[0] == '0'     
+
+   - name: Install Puppet Modules
+     become: yes
+     command: /opt/puppetlabs/bin/puppet module install -i /etc/puppetlabs/code/environments/production/modules {{ item }}
+     with_items:
+      - puppetlabs/ntp
+      - wdijkerman/zabbix
+      - saz/resolv_conf
+      - jlambert121-yum
+      - treydock-yum_cron
+      - isimluk-foreman_scap_client
+     register: puppet
+     args:
+      creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp  
+
+   - name: Import Puppet Classes
+     command: hammer proxy import-classes --id 1
+     when: puppet.changed
 
 - name: Configure Provision Server
   hosts: ansible

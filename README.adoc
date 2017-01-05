@@ -1,6 +1,6 @@
 # AMI Builder
 
-Utility to fully automate the creation of CentOS-based AMIs.
+This originally began as a utility to fully automate the creation of CentOS-based AMIs. However, it now includes the ability to create a basic IAAS environment for teams working in AWS. It will install an Ansible-based provisioning server that configures new machines to use FreeIPA for authentication, DNS, etc. In addition, servers are registered with Foreman to centralize configuration management and reporting. 
 
 ## Preparation
 
@@ -12,6 +12,8 @@ export AWS_PROFILE=dpp
 ----
 
 ## Usage
+
+Each of the three modes of operation spin up a temporary machine and will clean up resources following successful execution. At the start of each run, a private key will be printed. It is suggested that you copy that key in the event of execution failure. It will allow you to log into the temporary VM and troubleshoot.
 
 You need to make the cloud-init image first. That's the image that will be used to install any intial VMs such as basic infrastructure and the provisioning server. Once those resources are in place you can provision VMs using the prov-client AMI. 
 
@@ -26,9 +28,9 @@ ami-builder --subnet subnet-fcfbcd88 --ami ami-7cb1091d --name "Centos 7.3 cloud
 ----
 
 ### Provision Server
-
+----
 ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --user booz-user prov-server --server-rpm provision-server-0.1.4-1.git.14.dce166bNone.x86_64.rpm --client-rpm provision-client-0.1.4-1.git.14.dce166bNone.x86_64.rpm --domain new.gfclab.com --realm NEW.GFCLAB.COM --password mysecret
-
+----
 ### Provision Client
 
 Cloud init is fine, but it's often better to have an external server configure a new machine that have it configure itself. You don't want users provide cloud-init data directly because it can be complex and/or they can break things. Third-party tools can speak to AWS on your behalf. Foreman is OK in this role, but we found that it didn't provide enough flexibility. Creating new profiles for each OS, machine size, or networking configuration was too hard. Instead we create an AMI with a small client that phones home to a provisioning server at launch. The provision server provides an SSH key and proceeds to use Ansible for machine configuration. Ansible running on a dedicated server centralizing updates, protects credentials, and supports more orchestration options that cloud-init.
@@ -41,4 +43,4 @@ ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --name "Centos 7.3 prov-
 
 ### Tailoring
 
-Most of the work is performed with two BASH scripts, ami.sh and ami-iaas.sh, for cloud-init and prov-client respectively. In addition, prov-client expects to use the cloud-init AMI as a base image and includes minimal cloud-init data in cloud-data.yml. You made need to modify these for your environment. This is particularly true for offline installations where the yum repos will need to point to local copies of the required RPMS.
+Most of the work is performed with three BASH scripts, ami.sh, server.sh and ami-iaas.sh, for cloud-init, prov-server, and prov-client respectively. You made need to modify these for your environment. This is particularly true for offline installations where the yum repos will need to point to local copies of the required RPMS.
