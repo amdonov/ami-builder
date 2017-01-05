@@ -5,6 +5,7 @@ mkdir -p group_vars
 cat > group_vars/all << EOF
 image: ami-ab79c2ca
 domain: dpp.gfclab.com
+organization: BAH
 foreman: "foreman.{{ domain }}"
 admin_password: password123
 ds_password: password123
@@ -136,6 +137,22 @@ playbook = "/var/lib/prov-server/host.yml"
 [user]
 name = "{{ ansible_ssh_user }}"
 key = "{{ prov_key.stdout }}"
+EOF
+
+# Create provision-server ansible variable template
+cat > all.j2 << EOF
+---
+pass: '{{ lookup(''password'', ''/tmp/'' + fqdn ) }}'
+realm: {{ realm }}
+domain: {{ domain }}
+ansible_ssh_user: {{ ansible_ssh_user }}
+ipa1: {{ groups.ipa_master[0] }}
+ipa2: {{ groups.ipa_replica[0] }}
+hostgroup: infrastructure
+environment: production
+puppet_master: foreman.{{ domain }}
+organization: {{ organization }}
+location: {{ region }}
 EOF
 
 # Create ansible playbook
@@ -315,6 +332,9 @@ cat > start.yml << EOF
       module: wait_for
       port: 22 
       host: "{{ inventory_hostname }}"
+      search_regex: OpenSSH
+      delay: 10
+      timeout: 3600
 
    - name: Install IPA
      become: yes
@@ -378,7 +398,7 @@ cat > start.yml << EOF
   tasks:
    - name: Configure replica
      become: yes
-     command: ipa-replica-install --setup-ca --setup-dns --forwarder={{ dns_forwarder }} --unattended --password={{ ds_password }} --admin-password={{ admin_password }} --mkhomedir
+     command: ipa-replica-install --setup-ca --setup-dns --forwarder={{ dns_forwarder }} --unattended --admin-password={{ admin_password }} --mkhomedir
      args:
        creates: /etc/systemd/system/multi-user.target.wants/ipa.service     
 
@@ -444,7 +464,7 @@ cat > start.yml << EOF
 
    - name: Install Foreman
      become: yes
-     shell: foreman-installer --foreman-admin-password {{ admin_password }} --enable-foreman-proxy-plugin-openscap --enable-foreman-plugin-openscap --foreman-ipa-authentication=true --foreman-organizations-enabled=true --foreman-locations-enabled=true --foreman-initial-location=us-east-1 --foreman-initial-organization=BAH --enable-foreman-proxy && touch /etc/foreman/.installed
+     shell: foreman-installer --foreman-admin-password {{ admin_password }} --enable-foreman-proxy-plugin-openscap --enable-foreman-plugin-openscap --foreman-ipa-authentication=true --foreman-organizations-enabled=true --foreman-locations-enabled=true --foreman-initial-location={{ region }} --foreman-initial-organization={{ organization }} --enable-foreman-proxy && touch /etc/foreman/.installed
      environment:
       LANG: "en_US.UTF-8"
       LC_ALL: "en_US.UTF-8"
@@ -507,8 +527,18 @@ cat > start.yml << EOF
      register: realm_check
    
    - name: Create realm
-     command: hammer realm create --name {{ realm }} --realm-type FreeIPA --organizations BAH --locations {{ region }} --realm-proxy-id 1
-     when: realm_check.stdout_lines[0] == '1'
+     command: hammer realm create --name {{ realm }} --realm-type FreeIPA --organizations {{ organization }} --locations {{ region }} --realm-proxy-id 1
+     when: realm_check.stdout_lines[0] == '0'
+
+   - name: Check for hostgroup
+     shell: hammer hostgroup list | grep -c infrastructure
+     changed_when: False
+     failed_when: False
+     register: hostgroup_check
+   
+   - name: Create hostgroup
+     command: hammer hostgroup create --name infrastructure --environment production --puppet-ca-proxy {{ fqdn }} --puppet-proxy {{ fqdn }} --organizations {{ organization }} --locations {{ region }}
+     when: hostgroup_check.stdout_lines[0] == '0'     
 
 - name: Configure Provision Server
   hosts: ansible
@@ -556,7 +586,12 @@ cat > start.yml << EOF
      become: yes
      template:
        src: prov-server.toml.j2
-       dest: /etc/provision/prov-server.toml   
+       dest: /etc/provision/prov-server.toml
+   - name: Set provisioning Variables
+     become: yes
+     template:
+       src: all.j2
+       dest: /var/lib/prov-server/group_vars/all        
 
    - name: Start and Enable Server
      become: yes
@@ -582,8 +617,19 @@ cat > start.yml << EOF
      become: yes
      yum: name={{ item }} state=present
      with_items:
-      - /tmp/prov-client.rpm       
-                           
+      - /tmp/prov-client.rpm
+   - name: Run Provision Client
+     become: yes
+     command: prov-client -ip {{ groups.ansible[0] }}          
+
+- name: Dump out private key
+  hosts: ansible
+  tasks:
+   - name: Capture Key
+     become: yes
+     command: cat /var/lib/prov-server/.ssh/id_rsa
+     register: prov_key
+   - debug: var=prov_key.stdout_lines                             
 EOF
 export ANSIBLE_HOST_KEY_CHECKING=False
 ansible-playbook start.yml
