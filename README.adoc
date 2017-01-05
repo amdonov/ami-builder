@@ -25,6 +25,10 @@ Sample Usage is provided below
 ami-builder --subnet subnet-fcfbcd88 --ami ami-7cb1091d --name "Centos 7.3 cloud-init" cloud-init
 ----
 
+### Provision Server
+
+ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --user booz-user prov-server --server-rpm provision-server-0.1.4-1.git.13.8a9878aNone.x86_64.rpm --client-rpm provision-client-0.1.4-1.git.13.8a9878aNone.x86_64.rpm
+
 ### Provision Client
 
 Cloud init is fine, but it's often better to have an external server configure a new machine that have it configure itself. You don't want users provide cloud-init data directly because it can be complex and/or they can break things. Third-party tools can speak to AWS on your behalf. Foreman is OK in this role, but we found that it didn't provide enough flexibility. Creating new profiles for each OS, machine size, or networking configuration was too hard. Instead we create an AMI with a small client that phones home to a provisioning server at launch. The provision server provides an SSH key and proceeds to use Ansible for machine configuration. Ansible running on a dedicated server centralizing updates, protects credentials, and supports more orchestration options that cloud-init.

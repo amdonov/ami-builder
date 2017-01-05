@@ -22,7 +22,7 @@ func (c *Client) RunCommand(operation func(*ssh.Session) error) error {
 }
 
 func (c *Client) Close() {
-	c.Close()
+	c.c.Close()
 }
 
 func Connect(user, ip string, key []byte) (*Client, error) {

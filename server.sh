@@ -3,14 +3,14 @@ yum install -y ansible
 mkdir -p group_vars
 # Create ansible settings file
 cat > group_vars/all << EOF
-image: ami-adf1e9ba
-domain: lin.gfclab.com
+image: ami-ab79c2ca
+domain: dpp.gfclab.com
 foreman: "foreman.{{ domain }}"
 admin_password: password123
 ds_password: password123
-dns_forwarder: 10.208.86.2
-realm: LIN.GFCLAB.COM
-ansible_ssh_private_key_file: files/ansible.pem
+dns_forwarder: 8.8.8.8
+realm: DPP.GFCLAB.COM
+ansible_ssh_private_key_file: ansible.pem
 ansible_ssh_user: booz-user
 userdata: |
        #cloud-config
@@ -162,7 +162,7 @@ cat > start.yml << EOF
 
    - name: Save private key
      copy:
-        dest: files/ansible.pem
+        dest: ./ansible.pem
         content: "{{ keypair.key.private_key }}"
         mode: 0600
      when: keypair.changed    
@@ -458,17 +458,19 @@ cat > start.yml << EOF
       creates: /etc/foreman-proxy/freeipa.keytab
 
    - name: Check realm status
-     command: grep -c 'enabled: false' /etc/foreman-proxy/settings.d/realm.yml
+     become: yes
+     command: 'grep -c "enabled: false" /etc/foreman-proxy/settings.d/realm.yml'
      changed_when: False
      failed_when: False
-     register: realm
+     register: realm_check
 
    - name: Enable realm
+     become: yes
      shell: foreman-installer --foreman-proxy-realm-principal=realm-proxy@{{ realm }} --foreman-proxy-realm=true
      environment:
       LANG: "en_US.UTF-8"
       LC_ALL: "en_US.UTF-8"
-     when: realm.stdout_lines[0] == '1'    
+     when: realm_check.stdout_lines[0] == '1'    
 
    - name: Make Hammer Settings directory
      file:
@@ -482,7 +484,7 @@ cat > start.yml << EOF
 
    - name: Install Puppet Modules
      become: yes
-     command: puppet module install -i /etc/puppetlabs/code/environments/production/modules {{ item }}
+     command: /opt/puppetlabs/bin/puppet module install -i /etc/puppetlabs/code/environments/production/modules {{ item }}
      with_items:
       - puppetlabs/ntp
       - wdijkerman/zabbix
@@ -495,18 +497,18 @@ cat > start.yml << EOF
       creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp  
 
    - name: Import Puppet Classes
-     command: hammer proxy import-classes --environment production --id 1
+     command: hammer proxy import-classes --id 1
      when: puppet.changed
 
    - name: Check for realm
      shell: hammer realm list | grep -c {{ realm }}
      changed_when: False
      failed_when: False
-     register: realm
+     register: realm_check
    
    - name: Create realm
      command: hammer realm create --name {{ realm }} --realm-type FreeIPA --organizations BAH --locations {{ region }} --realm-proxy-id 1
-     when: realm.stdout_lines[0] == '1'
+     when: realm_check.stdout_lines[0] == '1'
 
 - name: Configure Provision Server
   hosts: ansible

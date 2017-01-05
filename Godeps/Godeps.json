@@ -127,6 +127,11 @@
 			"Rev": "34836244f5c4e694b99d1a81898af5559a3c9c6d"
 		},
 		{
+			"ImportPath": "github.com/aws/aws-sdk-go/service/iam",
+			"Comment": "v1.6.8-3-g3483624",
+			"Rev": "34836244f5c4e694b99d1a81898af5559a3c9c6d"
+		},
+		{
 			"ImportPath": "github.com/aws/aws-sdk-go/service/sts",
 			"Comment": "v1.6.8-3-g3483624",
 			"Rev": "34836244f5c4e694b99d1a81898af5559a3c9c6d"
