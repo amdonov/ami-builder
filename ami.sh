@@ -1,3 +1,4 @@
+AMIUSER=$1
 yum install -y xfsprogs
 mv /etc/yum.repos.d/* ~/
 
@@ -155,9 +156,9 @@ cloud_final_modules:
  
 system_info:
   default_user:
-    name: booz-user
+    name: $AMIUSER
     lock_passwd: true
-    gecos: Booz Allen Default User
+    gecos: Inital Admin User
     groups: [wheel, adm, systemd-journal]
     sudo: ["ALL=(ALL) NOPASSWD:ALL"]
     shell: /bin/bash

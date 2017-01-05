@@ -1,6 +1,7 @@
 package ami
 
 import (
+	"fmt"
 	"os"
 
 	"golang.org/x/crypto/ssh"
@@ -11,11 +12,12 @@ import (
 )
 
 type cloudInit struct {
-	user string
+	user      string
+	imageUser string
 }
 
-func NewCloudInitProvisioner(user string) instance.Provisioner {
-	return &cloudInit{user}
+func NewCloudInitProvisioner(user, imageUser string) instance.Provisioner {
+	return &cloudInit{user, imageUser}
 }
 
 func (c *cloudInit) Provision(ip string, key []byte) error {
@@ -32,6 +34,6 @@ func (c *cloudInit) Provision(ip string, key []byte) error {
 	}
 	return client.RunCommand(func(session *ssh.Session) error {
 		session.Stdout = os.Stdout
-		return session.Run("sudo /bin/bash ./ami.sh")
+		return session.Run(fmt.Sprintf("sudo /bin/bash ./ami.sh %s", c.imageUser))
 	})
 }

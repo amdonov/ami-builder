@@ -8,13 +8,21 @@ import (
 	"github.com/amdonov/ami-builder/ami"
 	"github.com/amdonov/ami-builder/ansible"
 
-	"io/ioutil"
-
 	"encoding/base64"
 
 	"github.com/amdonov/ami-builder/instance"
 	cli "gopkg.in/urfave/cli.v1"
 )
+
+const cloudData = `#cloud-config
+manage_etc_hosts: true
+manage_resolv_conf: true
+resolv_conf:
+  nameservers:
+   - %s
+  options:
+    rotate: true
+    timeout: 1`
 
 func main() {
 	app := cli.NewApp()
@@ -57,6 +65,13 @@ func main() {
 		{
 			Name:  "cloud-init",
 			Usage: "create a cloud-init based AMI",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "newuser",
+					Value: "ec2-user",
+					Usage: "privileged user in newly created AMI",
+				},
+			},
 			Action: func(c *cli.Context) error {
 				config := &instance.Config{
 					Subnet:  c.GlobalString("subnet"),
@@ -65,7 +80,7 @@ func main() {
 					Size:    c.GlobalString("size"),
 					Private: c.GlobalBool("private"),
 				}
-				return ami.CreateAMI(config, ami.NewCloudInitProvisioner(c.GlobalString("user")))
+				return ami.CreateAMI(config, ami.NewCloudInitProvisioner(c.GlobalString("user"), c.String("newuser")))
 			},
 		},
 		{
@@ -87,6 +102,31 @@ func main() {
 					Value: "ansible",
 					Usage: "IAM role name for provision-server",
 				},
+				cli.StringFlag{
+					Name:  "password",
+					Value: "changeme",
+					Usage: "adminstrator password for IPA and Foreman",
+				},
+				cli.StringFlag{
+					Name:  "domain",
+					Value: "example.com",
+					Usage: "domain name for servers",
+				},
+				cli.StringFlag{
+					Name:  "dns",
+					Value: "8.8.8.8",
+					Usage: "DNS server for external requests",
+				},
+				cli.StringFlag{
+					Name:  "realm",
+					Value: "EXAMPLE.COM",
+					Usage: "Kerberos realm for servers",
+				},
+				cli.StringFlag{
+					Name:  "org",
+					Value: "MyOrg",
+					Usage: "initial organization in Foreman",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				serverRPM := c.String("server-rpm")
@@ -97,10 +137,7 @@ func main() {
 				if "" == clientRPM {
 					return errors.New("client-rpm argument is required")
 				}
-				data, err := ioutil.ReadFile("cloud-data.yml")
-				if err != nil {
-					return err
-				}
+				data := []byte(fmt.Sprintf(cloudData, c.String("dns")))
 				// Confirm that the file is there to save some time
 				if _, err := os.Stat(serverRPM); os.IsNotExist(err) {
 					return fmt.Errorf("file path %s does not exist", serverRPM)
@@ -118,7 +155,9 @@ func main() {
 					UserData: base64.StdEncoding.EncodeToString(data),
 				}
 				return ansible.CreateProvisionServer(config,
-					ansible.NewAnsibleProvisioner(c.GlobalString("user"), clientRPM, serverRPM))
+					ansible.NewAnsibleProvisioner(c.GlobalString("user"), clientRPM, serverRPM,
+						c.GlobalString("ami"), c.String("dns"), c.String("org"), c.String("realm"),
+						c.String("domain"), c.String("password"), c.String("iam")))
 			},
 		},
 		{
@@ -135,6 +174,11 @@ func main() {
 					Value: "",
 					Usage: "IP address of provision server",
 				},
+				cli.StringFlag{
+					Name:  "dns",
+					Value: "8.8.8.8",
+					Usage: "DNS server for external requests",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				rpm := c.String("rpm")
@@ -145,10 +189,7 @@ func main() {
 				if "" == server {
 					return errors.New("server argument is required")
 				}
-				data, err := ioutil.ReadFile("cloud-data.yml")
-				if err != nil {
-					return err
-				}
+				data := []byte(fmt.Sprintf(cloudData, c.String("dns")))
 				// Confirm that the file is there to save some time
 				if _, err := os.Stat(rpm); os.IsNotExist(err) {
 					return fmt.Errorf("file path %s does not exist", rpm)

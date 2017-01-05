@@ -94,7 +94,7 @@ yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y install @core kerne
 # Install and Configure prov-client
 yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y install /tmp/prov-client.rpm 
 cat <<EOF > /mnt/ec2-image/etc/sysconfig/prov-client
-SERVER=172.31.32.198
+SERVER=$1
 EOF
 
 # Configure networking 

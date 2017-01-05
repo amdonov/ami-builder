@@ -2,6 +2,7 @@ package ansible
 
 import (
 	"errors"
+	"fmt"
 	"os"
 
 	"golang.org/x/crypto/ssh"
@@ -17,13 +18,20 @@ import (
 )
 
 type ansible struct {
-	user      string
-	clientRPM string
-	serverRPM string
+	user         string
+	clientRPM    string
+	serverRPM    string
+	ami          string
+	dns          string
+	organization string
+	realm        string
+	domain       string
+	password     string
+	role         string
 }
 
-func NewAnsibleProvisioner(user, clientRPM, serverRPM string) instance.Provisioner {
-	return &ansible{user, clientRPM, serverRPM}
+func NewAnsibleProvisioner(user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role string) instance.Provisioner {
+	return &ansible{user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role}
 }
 
 func (c *ansible) Provision(ip string, key []byte) error {
@@ -47,15 +55,16 @@ func (c *ansible) Provision(ip string, key []byte) error {
 	}
 	return client.RunCommand(func(session *ssh.Session) error {
 		session.Stdout = os.Stdout
-		return session.Run("sudo /bin/bash ./server.sh")
+		return session.Run(fmt.Sprintf("sudo /bin/bash ./server.sh %s %s %s %s %s %s %s %s",
+			c.password, c.domain, c.realm, c.organization, c.dns, c.ami, c.user, c.role))
 	})
 }
 
-func makeRole(sess *session.Session) error {
+func makeRole(sess *session.Session, role string) error {
 	svc := iam.New(sess)
-
+	awsRole := aws.String(role)
 	_, err := svc.CreateInstanceProfile(&iam.CreateInstanceProfileInput{
-		InstanceProfileName: aws.String("ansible"),
+		InstanceProfileName: awsRole,
 	})
 	if err != nil {
 		if err.(awserr.Error).Code() == "EntityAlreadyExists" {
@@ -66,7 +75,7 @@ func makeRole(sess *session.Session) error {
 
 	params := &iam.CreateRoleInput{
 		AssumeRolePolicyDocument: aws.String("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ec2.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"), // Required
-		RoleName:                 aws.String("ansible"),
+		RoleName:                 awsRole,
 	}
 	_, err = svc.CreateRole(params)
 	if err != nil {
@@ -76,8 +85,8 @@ func makeRole(sess *session.Session) error {
 		return err
 	}
 	_, err = svc.AddRoleToInstanceProfile(&iam.AddRoleToInstanceProfileInput{
-		InstanceProfileName: aws.String("ansible"),
-		RoleName:            aws.String("ansible"),
+		InstanceProfileName: awsRole,
+		RoleName:            awsRole,
 	})
 	if err != nil {
 		return err
@@ -85,7 +94,7 @@ func makeRole(sess *session.Session) error {
 	_, err = svc.PutRolePolicy(&iam.PutRolePolicyInput{
 		PolicyDocument: aws.String("{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"ec2:*\"],\"Resource\":[\"*\"]},{\"Effect\":\"Allow\",\"Action\":[\"iam:PassRole\"],\"Resource\":[\"*\"]}]}"),
 		PolicyName:     aws.String("anything-in-ec2"),
-		RoleName:       aws.String("ansible"),
+		RoleName:       awsRole,
 	})
 	return err
 }
@@ -98,7 +107,7 @@ func CreateProvisionServer(config *instance.Config, provisioner instance.Provisi
 	if err != nil {
 		return err
 	}
-	err = makeRole(sess)
+	err = makeRole(sess, config.IAMRole)
 	if err != nil {
 		return err
 	}

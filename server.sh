@@ -1,18 +1,26 @@
+PASSWORD=$1
+DOMAIN=$2
+REALM=$3
+ORGANIZATION=$4
+DNS=$5
+AMI=$6
+AMIUSER=$7
+IAMROLE=$8
 yum install -y epel-release
 yum install -y ansible
 mkdir -p group_vars
 # Create ansible settings file
 cat > group_vars/all << EOF
-image: ami-ab79c2ca
-domain: dpp.gfclab.com
-organization: BAH
+image: $AMI
+domain: $DOMAIN
+organization: $ORGANIZATION
 foreman: "foreman.{{ domain }}"
-admin_password: password123
-ds_password: password123
-dns_forwarder: 8.8.8.8
-realm: DPP.GFCLAB.COM
+admin_password: $PASSWORD
+ds_password: $PASSWORD
+dns_forwarder: $DNS
+realm: $REALM
 ansible_ssh_private_key_file: ansible.pem
-ansible_ssh_user: booz-user
+ansible_ssh_user: $AMIUSER
 userdata: |
        #cloud-config
        hostname: {{ item.hostname }}
@@ -91,7 +99,7 @@ vms:
           public_ip: no
           instance_type: t2.micro
           role: ansible
-          iam: ansible
+          iam: $IAMROLE
         - hostname: jump
           fqdn: "jump.{{ domain }}"
           tags:
@@ -142,7 +150,9 @@ EOF
 # Create provision-server ansible variable template
 cat > all.j2 << EOF
 ---
+{% raw %}
 pass: '{{ lookup(''password'', ''/tmp/'' + fqdn ) }}'
+{% endraw %}
 realm: {{ realm }}
 domain: {{ domain }}
 ansible_ssh_user: {{ ansible_ssh_user }}

@@ -22,12 +22,12 @@ This AMI can be created using a recent Amazon Linux AMI as the base. It's not th
 Sample Usage is provided below
 
 ----
-ami-builder --subnet subnet-fcfbcd88 --ami ami-7cb1091d --name "Centos 7.3 cloud-init" cloud-init
+ami-builder --subnet subnet-fcfbcd88 --ami ami-7cb1091d --name "Centos 7.3 cloud-init" cloud-init --newuser booz-user
 ----
 
 ### Provision Server
 
-ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --user booz-user prov-server --server-rpm provision-server-0.1.4-1.git.13.8a9878aNone.x86_64.rpm --client-rpm provision-client-0.1.4-1.git.13.8a9878aNone.x86_64.rpm
+ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --user booz-user prov-server --server-rpm provision-server-0.1.4-1.git.14.dce166bNone.x86_64.rpm --client-rpm provision-client-0.1.4-1.git.14.dce166bNone.x86_64.rpm --domain new.gfclab.com --realm NEW.GFCLAB.COM --password mysecret
 
 ### Provision Client
 
@@ -36,7 +36,7 @@ Cloud init is fine, but it's often better to have an external server configure a
 Additional steps are performed on this AMI to accelerate start up. Such as SCAP-based hardening and an SE Linux relabel. Enabling the relabel requires the use of VM that's running SE Linux to bootstrap. Amazon Linux AMIs do not. However, you can use the cloud-init image created previously or a RHEL image.
 
 ----
-ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --name "Centos 7.3 prov-client" --user booz-user prov-client --rpm  provision-client-0.1.4-1.git.13.8a9878aNone.x86_64.rpm --server 172.31.32.198
+ami-builder --subnet subnet-fcfbcd88 --ami ami-ab79c2ca --name "Centos 7.3 prov-client" --user booz-user prov-client --rpm  provision-client-0.1.4-1.git.14.dce166bNone.x86_64.rpm --server 172.31.32.198
 ----
 
 ### Tailoring
