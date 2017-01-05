@@ -35,6 +35,13 @@ func CreateAMI(config *instance.Config, provisioner instance.Provisioner) error 
 	if err != nil {
 		return err
 	}
+	// Wait until volume is available
+	err = ec2Service.WaitUntilVolumeAvailable(&ec2.DescribeVolumesInput{
+		VolumeIds: []*string{volResult.VolumeId},
+	})
+	if err != nil {
+		return err
+	}
 	// Attach storage
 	attachParams := &ec2.AttachVolumeInput{
 		Device:     aws.String("/dev/sdf"),
