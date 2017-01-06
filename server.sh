@@ -6,8 +6,8 @@ DNS=$5
 AMI=$6
 AMIUSER=$7
 IAMROLE=$8
-yum install -y epel-release
-yum install -y ansible
+sudo yum install -y epel-release
+sudo yum install -y ansible
 mkdir -p group_vars
 # Create ansible settings file
 cat > group_vars/all << EOF
@@ -522,6 +522,16 @@ cat > start.yml << EOF
      command: hammer realm create --name {{ realm }} --realm-type FreeIPA --organizations {{ organization }} --locations {{ region }} --realm-proxy-id 1
      when: realm_check.stdout_lines[0] == '0'
 
+   - name: Check for environment
+     shell: hammer environment list | grep -c production
+     changed_when: False
+     failed_when: False
+     register: env_check
+   
+   - name: Create environment
+     command: hammer environment create --name production  --organizations {{ organization }} --locations {{ region }}
+     when: env_check.stdout_lines[0] == '0' 
+
    - name: Check for hostgroup
      shell: hammer hostgroup list | grep -c infrastructure
      changed_when: False
@@ -540,17 +550,7 @@ cat > start.yml << EOF
    
    - name: Create domain
      command: hammer domain create --name {{ domain }}  --organizations {{ organization }} --locations {{ region }}
-     when: domain_check.stdout_lines[0] == '0'
-
-   - name: Check for environment
-     shell: hammer environment list | grep -c production
-     changed_when: False
-     failed_when: False
-     register: env_check
-   
-   - name: Create environment
-     command: hammer environment create --name production  --organizations {{ organization }} --locations {{ region }}
-     when: env_check.stdout_lines[0] == '0'     
+     when: domain_check.stdout_lines[0] == '0'    
 
    - name: Install Puppet Modules
      become: yes

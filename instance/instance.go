@@ -171,6 +171,14 @@ func Start(ec2Service *ec2.EC2, config *Config) (*Server, error) {
 			time.Sleep(10 * time.Second)
 		}
 	}
+
+	log.Println("Waiting for instance to start")
+	if err = ec2Service.WaitUntilInstanceRunning(&ec2.DescribeInstancesInput{
+		InstanceIds: []*string{result.Instances[0].InstanceId},
+	}); err != nil {
+		return nil, err
+	}
+
 	// Everything is good return data to caller
 	ai := &Server{
 		Instance:      instance,

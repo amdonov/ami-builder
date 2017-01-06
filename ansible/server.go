@@ -55,7 +55,7 @@ func (c *ansible) Provision(ip string, key []byte) error {
 	}
 	return client.RunCommand(func(session *ssh.Session) error {
 		session.Stdout = os.Stdout
-		return session.Run(fmt.Sprintf("sudo /bin/bash ./server.sh %s %s %s %s %s %s %s %s",
+		return session.Run(fmt.Sprintf("/bin/bash ./server.sh %s %s %s %s %s %s %s %s",
 			c.password, c.domain, c.realm, c.organization, c.dns, c.ami, c.user, c.role))
 	})
 }
