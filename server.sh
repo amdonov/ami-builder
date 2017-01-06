@@ -487,6 +487,16 @@ cat > start.yml << EOF
      args:
       creates: /etc/foreman-proxy/freeipa.keytab
 
+   - name: Copy keytab for use by prov-server
+     become: yes
+     copy:
+       remote_src: True
+       src: /etc/foreman-proxy/freeipa.keytab
+       dest: "/home/{{ ansible_ssh_user }}/freeipa.keytab"
+       owner: "{{ ansible_ssh_user }}"
+       group: "{{ ansible_ssh_user }}"
+       mode: 0600    
+
    - name: Check realm status
      become: yes
      command: 'grep -c "enabled: false" /etc/foreman-proxy/settings.d/realm.yml'
