@@ -39,7 +39,7 @@ mount /dev/xvdf1 /mnt/ec2-image/boot
  
 # make devices
 mkdir -p /mnt/ec2-image/{dev,etc,proc,sys}
-mkdir -p /mnt/ec2-image/var/{cache,log,lock,lib/rpm}
+mkdir -p /mnt/ec2-image/var/{cache,log,lib/rpm}
 mknod -m 622 /mnt/ec2-image/dev/console c 5 1
 mknod -m 666 /mnt/ec2-image/dev/null c 1 3
 mknod -m 666 /mnt/ec2-image/dev/zero c 1 5
