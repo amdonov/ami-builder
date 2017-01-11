@@ -346,6 +346,10 @@ cat > start.yml << EOF
       delay: 10
       timeout: 3600
 
+   - name: Sleep Waiting for SSH Keygen 
+     pause:
+       seconds: 60
+
    - name: Install IPA
      become: yes
      yum: name={{ item }} state=present
