@@ -58,7 +58,7 @@ vms:
            - ssh
            - ipa
           public_ip: no
-          instance_type: t2.micro
+          instance_type: t2.small
           role: ipa_master
           iam:
         - hostname: ipa2
@@ -71,7 +71,7 @@ vms:
            - ssh
            - ipa
           public_ip: no
-          instance_type: t2.micro
+          instance_type: t2.small
           role: ipa_replica
           iam:
         - hostname: foreman
