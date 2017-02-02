@@ -83,7 +83,7 @@ vms:
           security_groups:
            - ssh
            - ipa
-          public_ip: no
+          public_ip: yes
           instance_type: t2.small
           role: ipa_master
           iam:
@@ -96,7 +96,7 @@ vms:
           security_groups:
            - ssh
            - ipa
-          public_ip: no
+          public_ip: yes
           instance_type: t2.small
           role: ipa_replica
           iam:
@@ -122,7 +122,7 @@ vms:
           security_groups:
            - ssh
            - prov-server
-          public_ip: no
+          public_ip: yes
           instance_type: t2.micro
           role: ansible
           iam: $IAMROLE
@@ -134,7 +134,7 @@ vms:
            version: 7.3
           security_groups:
            - jump
-          public_ip: no
+          public_ip: yes
           instance_type: t2.micro
           role: jump
           iam:                      
