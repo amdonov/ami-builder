@@ -60,6 +60,12 @@ func main() {
 			Usage:  "connect to bootstrap machine via private IP",
 			EnvVar: "AMI_PRIVATE",
 		},
+		cli.StringFlag{
+			Name:   "repo, r",
+			Value:  "default",
+			Usage:  "Local IP address of server containing software",
+			EnvVar: "REPO_SERVER",
+		},
 	}
 	app.Commands = []cli.Command{
 		{
@@ -80,7 +86,7 @@ func main() {
 					Size:    c.GlobalString("size"),
 					Private: c.GlobalBool("private"),
 				}
-				return ami.CreateAMI(config, ami.NewCloudInitProvisioner(c.GlobalString("user"), c.String("newuser")))
+				return ami.CreateAMI(config, ami.NewCloudInitProvisioner(c.GlobalString("user"), c.String("newuser"), c.GlobalString("repo")))
 			},
 		},
 		{
@@ -157,7 +163,7 @@ func main() {
 				return ansible.CreateProvisionServer(config,
 					ansible.NewAnsibleProvisioner(c.GlobalString("user"), clientRPM, serverRPM,
 						c.GlobalString("ami"), c.String("dns"), c.String("org"), c.String("realm"),
-						c.String("domain"), c.String("password"), c.String("iam")))
+						c.String("domain"), c.String("password"), c.String("iam"), c.GlobalString("repo")))
 			},
 		},
 		{
@@ -202,7 +208,7 @@ func main() {
 					Private:  c.GlobalBool("private"),
 					UserData: base64.StdEncoding.EncodeToString(data),
 				}
-				return ami.CreateAMI(config, ami.NewProvClientProvisioner(c.GlobalString("user"), rpm, server))
+				return ami.CreateAMI(config, ami.NewProvClientProvisioner(c.GlobalString("user"), rpm, server, c.GlobalString("repo")))
 			},
 		},
 	}

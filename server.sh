@@ -6,7 +6,32 @@ DNS=$5
 AMI=$6
 AMIUSER=$7
 IAMROLE=$8
+REPO=$9
+if [ "$REPO" = "default" ]; then
 sudo yum install -y epel-release
+else
+sudo tee /etc/yum.repos.d/repos.repo > /dev/null <<EOF
+[base]
+name=Base
+baseurl=http://$REPO/base/
+gpgcheck=0
+ 
+[updates]
+name=Updates
+baseurl=http://$REPO/updates/
+gpgcheck=0
+ 
+[extras]
+name=Extras
+baseurl=http://$REPO/extras/
+gpgcheck=0
+
+[epel]
+name=EPEL
+baseurl=http://$REPO/epel/
+gpgcheck=0
+EOF
+fi
 sudo yum install -y ansible
 mkdir -p group_vars
 # Create ansible settings file
@@ -21,6 +46,7 @@ dns_forwarder: $DNS
 realm: $REALM
 ansible_ssh_private_key_file: ansible.pem
 ansible_ssh_user: $AMIUSER
+software_repo: $REPO
 userdata: |
        #cloud-config
        hostname: {{ item.hostname }}
@@ -114,6 +140,63 @@ vms:
           iam:                      
 EOF
 
+# Create repo templates
+cat > epel.repo.j2 <<EOF
+[epel]
+name=Extra Packages for Enterprise Linux 7 - x86_64
+baseurl=http://{{ software_repo }}/epel/
+gpgcheck=0
+EOF
+
+cat > foreman.repo.j2 <<EOF
+[puppetlabs-pc1]
+name=Puppet Labs PC1 Repository el 7
+baseurl=http://{{ software_repo }}/puppetlabs-pc1/
+gpgcheck=0
+
+[centos-sclo-sclo]
+name=CentOS-7 - SCLo sclo
+baseurl=http://{{ software_repo }}/centos-sclo-sclo/
+gpgcheck=0
+
+[centos-sclo-rh]
+name=CentOS-7 - SCLo rh
+baseurl=http://{{ software_repo }}/centos-sclo-rh/
+gpgcheck=0
+
+[epel]
+name=Extra Packages for Enterprise Linux 7 - x86_64
+baseurl=http://{{ software_repo }}/epel/
+gpgcheck=0
+
+[foreman-plugins]
+name=Foreman plugins 1.13
+baseurl=http://{{ software_repo }}/foreman-plugins/
+gpgcheck=0
+
+[foreman]
+name=Foreman 1.13
+baseurl=http://{{ software_repo }}/foreman/
+gpgcheck=0
+EOF
+
+cat > os.repo.j2 <<EOF
+[base]
+name=Base
+baseurl=http://{{ software_repo }}/base/
+gpgcheck=0
+
+[updates]
+name=Updates
+baseurl=http://{{ software_repo }}/updates/
+gpgcheck=0
+
+[extras]
+name=Extras
+baseurl=http://{{ software_repo }}/extras/
+gpgcheck=0
+EOF
+
 # Create DNS template
 cat > resolv.conf.j2 << EOF
 nameserver {{ ipaserver_ip }}
@@ -192,8 +275,8 @@ cat > start.yml << EOF
         dest: ./ansible.pem
         content: "{{ keypair.key.private_key }}"
         mode: 0600
-     when: keypair.changed    
- 
+     when: keypair.changed
+
    - name: Create Jump Server Security Group
      ec2_group:
         name: jump
@@ -329,26 +412,33 @@ cat > start.yml << EOF
       groups: "{{ item.item.role }}"
       fqdn: "{{ item.item.fqdn}}"
       region: "{{ region }}"
-     with_items: "{{ instances.results }}"   
+     with_items: "{{ instances.results }}"
 
 - name: Install IPA
-  hosts: 
+  hosts:
    - ipa_master
    - ipa_replica
   gather_facts: false
   tasks:
    - name: Wait for SSH
-     local_action: 
+     local_action:
       module: wait_for
-      port: 22 
+      port: 22
       host: "{{ inventory_hostname }}"
       search_regex: OpenSSH
       delay: 10
       timeout: 3600
 
-   - name: Sleep Waiting for SSH Keygen 
+   - name: Sleep Waiting for SSH Keygen
      pause:
        seconds: 60
+
+   - name: Configure OS repos
+     when: software_repo != 'default'
+     become: yes
+     template:
+       src: os.repo.j2
+       dest: /etc/yum.repos.d/os.repo
 
    - name: Install IPA
      become: yes
@@ -404,7 +494,7 @@ cat > start.yml << EOF
      become: yes
      command: ipa-client-install --mkhomedir --principal=admin --password={{ admin_password }} --unattended
      args:
-       creates: /etc/ipa/default.conf          
+       creates: /etc/ipa/default.conf
 
 - name: Configure IPA Replica
   hosts:
@@ -414,19 +504,34 @@ cat > start.yml << EOF
      become: yes
      command: ipa-replica-install --setup-ca --setup-dns --forwarder={{ dns_forwarder }} --unattended --admin-password={{ admin_password }} --mkhomedir
      args:
-       creates: /etc/systemd/system/multi-user.target.wants/ipa.service     
+       creates: /etc/systemd/system/multi-user.target.wants/ipa.service
 
 - hosts: foreman
   gather_facts: false
   tasks:
    - name: Install Foreman Repos
      become: yes
+     when: software_repo == 'default'
      yum: name={{ item }} state=present
      with_items:
       - https://yum.puppetlabs.com/puppetlabs-release-pc1-el-7.noarch.rpm
       - epel-release
       - https://yum.theforeman.org/releases/1.13/el7/x86_64/foreman-release.rpm
-  
+
+   - name: Configure OS Repos
+     become: yes
+     when: software_repo != 'default'
+     template:
+       src: os.repo.j2
+       dest: /etc/yum.repos.d/os.repo
+
+   - name: Configure Foreman Repos
+     become: yes
+     when: software_repo != 'default'
+     template:
+       src: foreman.repo.j2
+       dest: /etc/yum.repos.d/foreman.repo
+
    - name: Install Foreman Installer
      become: yes
      yum: name={{ item }} state=present
@@ -434,7 +539,7 @@ cat > start.yml << EOF
       - foreman-installer
       - ipa-admintools
       - httpd
-  
+
    - name: Trust IPA certificates
      become: yes
      copy:
@@ -461,7 +566,7 @@ cat > start.yml << EOF
        owner: apache
        group: apache
        mode: 600
- 
+
    - name: Open Firewall Services
      become: yes
      firewalld: service={{ item }} permanent=true state=enabled immediate=true
@@ -476,14 +581,24 @@ cat > start.yml << EOF
       - 8140/tcp
       - 8443/tcp
 
+   - name: Set Default Foreman Options
+     set_fact:
+      foreman_opts: ''
+     when: software_repo == 'default'
+
+   - name: Set Extra Foreman Options
+     set_fact:
+      foreman_opts: '--foreman-configure-epel-repo=false --foreman-configure-scl-repo=false'
+     when: software_repo != 'default'
+
    - name: Install Foreman
      become: yes
-     shell: foreman-installer --foreman-admin-password {{ admin_password }} --enable-foreman-proxy-plugin-openscap --enable-foreman-plugin-openscap --foreman-ipa-authentication=true --foreman-organizations-enabled=true --foreman-locations-enabled=true --foreman-initial-location={{ region }} --foreman-initial-organization={{ organization }} --enable-foreman-proxy && touch /etc/foreman/.installed
+     shell: foreman-installer --foreman-admin-password {{ admin_password }} --enable-foreman-proxy-plugin-openscap --enable-foreman-plugin-openscap --foreman-ipa-authentication=true --foreman-organizations-enabled=true --foreman-locations-enabled=true --foreman-initial-location={{ region }} --foreman-initial-organization={{ organization }} --enable-foreman-proxy {{ foreman_opts}}  && touch /etc/foreman/.installed
      environment:
       LANG: "en_US.UTF-8"
       LC_ALL: "en_US.UTF-8"
      args:
-      creates: /etc/foreman/.installed         
+      creates: /etc/foreman/.installed
 
    - name: Create realm-proxy
      become: yes
@@ -499,7 +614,7 @@ cat > start.yml << EOF
        dest: "/home/{{ ansible_ssh_user }}/freeipa.keytab"
        owner: "{{ ansible_ssh_user }}"
        group: "{{ ansible_ssh_user }}"
-       mode: 0600    
+       mode: 0600
 
    - name: Check realm status
      become: yes
@@ -514,13 +629,13 @@ cat > start.yml << EOF
      environment:
       LANG: "en_US.UTF-8"
       LC_ALL: "en_US.UTF-8"
-     when: realm_check.stdout_lines[0] == '1'    
+     when: realm_check.stdout_lines[0] == '1'
 
    - name: Make Hammer Settings directory
      file:
        path: "/home/{{ ansible_ssh_user }}/.hammer"
-       state: directory                               
-   
+       state: directory
+
    - name: Configure Hammer
      template:
        src: cli_config.yml.j2
@@ -531,7 +646,7 @@ cat > start.yml << EOF
      changed_when: False
      failed_when: False
      register: realm_check
-   
+
    - name: Create realm
      command: hammer realm create --name {{ realm }} --realm-type FreeIPA --organizations {{ organization }} --locations {{ region }} --realm-proxy-id 1
      when: realm_check.stdout_lines[0] == '0'
@@ -541,17 +656,17 @@ cat > start.yml << EOF
      changed_when: False
      failed_when: False
      register: env_check
-   
+
    - name: Create environment
      command: hammer environment create --name production  --organizations {{ organization }} --locations {{ region }}
-     when: env_check.stdout_lines[0] == '0' 
+     when: env_check.stdout_lines[0] == '0'
 
    - name: Check for hostgroup
      shell: hammer hostgroup list | grep -c infrastructure
      changed_when: False
      failed_when: False
      register: hostgroup_check
-   
+
    - name: Create hostgroup
      command: hammer hostgroup create --name infrastructure --environment production --puppet-ca-proxy {{ fqdn }} --puppet-proxy {{ fqdn }} --organizations {{ organization }} --locations {{ region }}
      when: hostgroup_check.stdout_lines[0] == '0'
@@ -561,13 +676,14 @@ cat > start.yml << EOF
      changed_when: False
      failed_when: False
      register: domain_check
-   
+
    - name: Create domain
      command: hammer domain create --name {{ domain }}  --organizations {{ organization }} --locations {{ region }}
-     when: domain_check.stdout_lines[0] == '0'    
+     when: domain_check.stdout_lines[0] == '0'
 
    - name: Install Puppet Modules
      become: yes
+     when: software_repo == 'default'
      command: /opt/puppetlabs/bin/puppet module install -i /etc/puppetlabs/code/environments/production/modules {{ item }}
      with_items:
       - puppetlabs/ntp
@@ -578,7 +694,17 @@ cat > start.yml << EOF
       - isimluk-foreman_scap_client
      register: puppet
      args:
-      creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp  
+      creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp
+
+   - name: Download Module Archive
+     become: yes
+     when: software_repo != 'default'
+     register: puppet
+     unarchive:
+      src: "http://{{ software_repo }}/puppet.tgz"
+      remote_src: true
+      dest: /etc/puppetlabs/code/environments/production/modules
+      creates: /etc/puppetlabs/code/environments/production/modules/foreman_scap_client/manifests/init.pp
 
    - name: Import Puppet Classes
      command: hammer proxy import-classes --id 1
@@ -589,8 +715,23 @@ cat > start.yml << EOF
   gather_facts: false
   tasks:
 
+   - name: Configure OS Repos
+     become: yes
+     when: software_repo != 'default'
+     template:
+       src: os.repo.j2
+       dest: /etc/yum.repos.d/os.repo
+
+   - name: Configure EPEL Repos
+     become: yes
+     when: software_repo != 'default'
+     template:
+       src: epel.repo.j2
+       dest: /etc/yum.repos.d/epel.repo
+
    - name: Install EPEL Repo
      become: yes
+     when: software_repo == 'default'
      yum: name=epel-release state=present
 
    - name: Install Ansible
@@ -606,7 +747,7 @@ cat > start.yml << EOF
      become: yes
      yum: name={{ item }} state=present
      with_items:
-      - /tmp/prov-server.rpm         
+      - /tmp/prov-server.rpm
 
    - name: Open Firewall Ports
      become: yes
@@ -635,12 +776,12 @@ cat > start.yml << EOF
      become: yes
      template:
        src: all.j2
-       dest: /var/lib/prov-server/group_vars/all        
+       dest: /var/lib/prov-server/group_vars/all
 
    - name: Start and Enable Server
      become: yes
-     service: 
-      name: prov-server 
+     service:
+      name: prov-server
       state: started
       enabled: yes
 
@@ -664,7 +805,7 @@ cat > start.yml << EOF
       - /tmp/prov-client.rpm
    - name: Run Provision Client
      become: yes
-     command: prov-client -ip {{ groups.ansible[0] }}          
+     command: prov-client -ip {{ groups.ansible[0] }}
 
 - name: Dump out private key
   hosts: ansible
@@ -673,7 +814,7 @@ cat > start.yml << EOF
      become: yes
      command: cat /var/lib/prov-server/.ssh/id_rsa
      register: prov_key
-   - debug: var=prov_key.stdout_lines                             
+   - debug: var=prov_key.stdout_lines                           
 EOF
 export ANSIBLE_HOST_KEY_CHECKING=False
 ansible-playbook start.yml

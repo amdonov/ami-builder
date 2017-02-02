@@ -16,10 +16,11 @@ type provClient struct {
 	user   string
 	rpm    string
 	server string
+	repo   string
 }
 
-func NewProvClientProvisioner(user, rpm, server string) instance.Provisioner {
-	return &provClient{user, rpm, server}
+func NewProvClientProvisioner(user, rpm, server, repo string) instance.Provisioner {
+	return &provClient{user, rpm, server, repo}
 }
 
 func (c *provClient) Provision(ip string, key []byte) error {
@@ -42,6 +43,6 @@ func (c *provClient) Provision(ip string, key []byte) error {
 	}
 	return client.RunCommand(func(session *ssh.Session) error {
 		session.Stdout = os.Stdout
-		return session.Run(fmt.Sprintf("sudo /bin/bash ./ami.sh %s", c.server))
+		return session.Run(fmt.Sprintf("sudo /bin/bash ./ami.sh %s %s", c.server, c.repo))
 	})
 }

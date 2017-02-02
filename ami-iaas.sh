@@ -1,3 +1,8 @@
+PROV_SERVER=$1
+REPO=$2
+# Fail on error
+set -e
+
 mv /etc/yum.repos.d/* ~/
 
 # Create the filesystems 
@@ -63,8 +68,9 @@ LABEL=BOOTFS /boot                   xfs     defaults        0 0
 /dev/mapper/vg1-swap swap                    swap    defaults        0 0
 EOF
  
-# create a yum configuration for the installation 
+# create a yum configuration for the installation
 mkdir -p /opt/ec2/yum
+if [ "$REPO" = "default" ]; then 
 cat <<EOF> /opt/ec2/yum/yum.conf
 [base]
 name=Base
@@ -87,6 +93,30 @@ baseurl=http://yum.puppetlabs.com/el/7/PC1/x86_64/
 gpgcheck=0
  
 EOF
+else
+cat <<EOF> /opt/ec2/yum/yum.conf
+[base]
+name=Base
+baseurl=http://$REPO/base/
+gpgcheck=0
+ 
+[updates]
+name=Updates
+baseurl=http://$REPO/updates/
+gpgcheck=0
+ 
+[extras]
+name=Extras
+baseurl=http://$REPO/extras/
+gpgcheck=0
+ 
+[puppetlabs-pc1]
+name=Puppet Labs PC1 Repository el 7 
+baseurl=http://$REPO/puppetlabs-pc1/
+gpgcheck=0
+ 
+EOF
+fi
 
 # Install the OS 
 yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y install @core kernel openssh-clients grub2 grub2-tools lvm2 puppet-agent ipa-client scap-security-guide aide
@@ -94,8 +124,13 @@ yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y install @core kerne
 # Install and Configure prov-client
 yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y install /tmp/prov-client.rpm 
 cat <<EOF > /mnt/ec2-image/etc/sysconfig/prov-client
-SERVER=$1
+SERVER=$PROV_SERVER
 EOF
+
+# Remove references to external repos for disconnected installs
+if [ "$REPO" != "default" ]; then 
+rm -f /mnt/ec2-image/etc/yum.repos.d/*
+fi
 
 # Configure networking 
 cat <<EOF > /mnt/ec2-image/etc/sysconfig/network

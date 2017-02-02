@@ -14,10 +14,11 @@ import (
 type cloudInit struct {
 	user      string
 	imageUser string
+	repo      string
 }
 
-func NewCloudInitProvisioner(user, imageUser string) instance.Provisioner {
-	return &cloudInit{user, imageUser}
+func NewCloudInitProvisioner(user, imageUser, repo string) instance.Provisioner {
+	return &cloudInit{user, imageUser, repo}
 }
 
 func (c *cloudInit) Provision(ip string, key []byte) error {
@@ -34,6 +35,6 @@ func (c *cloudInit) Provision(ip string, key []byte) error {
 	}
 	return client.RunCommand(func(session *ssh.Session) error {
 		session.Stdout = os.Stdout
-		return session.Run(fmt.Sprintf("sudo /bin/bash ./ami.sh %s", c.imageUser))
+		return session.Run(fmt.Sprintf("sudo /bin/bash ./ami.sh %s %s", c.imageUser, c.repo))
 	})
 }

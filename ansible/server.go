@@ -28,10 +28,11 @@ type ansible struct {
 	domain       string
 	password     string
 	role         string
+	repo         string
 }
 
-func NewAnsibleProvisioner(user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role string) instance.Provisioner {
-	return &ansible{user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role}
+func NewAnsibleProvisioner(user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role, repo string) instance.Provisioner {
+	return &ansible{user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role, repo}
 }
 
 func (c *ansible) Provision(ip string, key []byte) error {
@@ -55,8 +56,8 @@ func (c *ansible) Provision(ip string, key []byte) error {
 	}
 	return client.RunCommand(func(session *ssh.Session) error {
 		session.Stdout = os.Stdout
-		return session.Run(fmt.Sprintf("/bin/bash ./server.sh %s %s %s %s %s %s %s %s",
-			c.password, c.domain, c.realm, c.organization, c.dns, c.ami, c.user, c.role))
+		return session.Run(fmt.Sprintf("/bin/bash ./server.sh %s %s %s %s %s %s %s %s %s",
+			c.password, c.domain, c.realm, c.organization, c.dns, c.ami, c.user, c.role, c.repo))
 	})
 }
 
