@@ -7,7 +7,7 @@ AMI=$6
 AMIUSER=$7
 IAMROLE=$8
 REPO=$9
-GROUP_TAG=$10
+GROUP_TAG=${10}
 if [ "$REPO" = "default" ]; then
 sudo yum install -y epel-release
 else
@@ -593,6 +593,17 @@ cat > start.yml << EOF
       foreman_opts: '--foreman-configure-epel-repo=false --foreman-configure-scl-repo=false'
      when: software_repo != 'default'
 
+   - name: Stop SSH timeout
+     lineinfile:
+       path: /etc/ssh/sshd_config
+       state: absent
+       line: 'ClientAliveInterval 900'
+
+   - name: Reload SSH
+     service:
+       name: sshd
+       state: reloaded  
+
    - name: Install Foreman
      become: yes
      shell: foreman-installer --foreman-admin-password {{ admin_password }} --enable-foreman-proxy-plugin-openscap --enable-foreman-plugin-openscap --foreman-ipa-authentication=true --foreman-organizations-enabled=true --foreman-locations-enabled=true --foreman-initial-location={{ region }} --foreman-initial-organization={{ organization }} --enable-foreman-proxy {{ foreman_opts}}  && touch /etc/foreman/.installed
@@ -601,6 +612,16 @@ cat > start.yml << EOF
       LC_ALL: "en_US.UTF-8"
      args:
       creates: /etc/foreman/.installed
+
+   - name: Enable SSH timeout
+     lineinfile:
+       path: /etc/ssh/sshd_config
+       line: 'ClientAliveInterval 900'
+
+   - name: Reload SSH
+     service:
+       name: sshd
+       state: reloaded   
 
    - name: Create realm-proxy
      become: yes
