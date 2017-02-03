@@ -594,12 +594,14 @@ cat > start.yml << EOF
      when: software_repo != 'default'
 
    - name: Stop SSH timeout
+     become: yes
      lineinfile:
-       path: /etc/ssh/sshd_config
+       dest: /etc/ssh/sshd_config
        state: absent
        line: 'ClientAliveInterval 900'
 
    - name: Reload SSH
+     become: yes
      service:
        name: sshd
        state: reloaded  
@@ -614,11 +616,13 @@ cat > start.yml << EOF
       creates: /etc/foreman/.installed
 
    - name: Enable SSH timeout
+     become: yes
      lineinfile:
-       path: /etc/ssh/sshd_config
+       dest: /etc/ssh/sshd_config
        line: 'ClientAliveInterval 900'
 
    - name: Reload SSH
+     become: yes
      service:
        name: sshd
        state: reloaded   
