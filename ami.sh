@@ -118,6 +118,9 @@ fi
 # Install the OS 
 yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y install @core kernel openssh-clients grub2 grub2-tools lvm2 cloud-init puppet-agent ipa-client scap-security-guide aide
 
+# Clean up yum
+yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y clean all
+
 # Remove references to external repos for disconnected installs
 if [ "$REPO" != "default" ]; then 
 rm -f /mnt/ec2-image/etc/yum.repos.d/*
@@ -222,8 +225,33 @@ chroot /mnt/ec2-image grub2-install /dev/xvdf
 chroot /mnt/ec2-image grub2-mkconfig -o /boot/grub2/grub.cfg
 chroot /mnt/ec2-image systemctl enable lvm2-lvmetad.service
 chroot /mnt/ec2-image systemctl enable lvm2-lvmetad.socket
- 
-yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y clean all
+
+chroot /mnt/ec2-image oscap xccdf eval --remediate --profile xccdf_org.ssgproject.content_profile_stig-rhel7-server-upstream /usr/share/xml/scap/ssg/content/ssg-centos7-ds.xml || true
+# These remediatations weren't there. Perhaps a chroot issue
+cat >> /mnt/ec2-image/etc/ssh/sshd_config << EOF
+Protocol 2
+
+# Per CCE: Set ClientAliveInterval 900 in /etc/ssh/sshd_config
+ClientAliveInterval 900
+# Per CCE: Set ClientAliveCountMax 0 in /etc/ssh/sshd_config
+ClientAliveCountMax 0
+PermitRootLogin no
+
+# Per CCE: Set PermitEmptyPasswords no in /etc/ssh/sshd_config
+PermitEmptyPasswords no
+# Per CCE: Set Banner /etc/issue in /etc/ssh/sshd_config
+Banner /etc/issue
+# Per CCE: Set PermitUserEnvironment no in /etc/ssh/sshd_config
+PermitUserEnvironment no
+# Per CCE: Set Ciphers aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc in /etc/ssh/sshd_config
+Ciphers aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc
+MACs hmac-sha2-512,hmac-sha2-256,hmac-sha1
+EOF
+# Couldn't ssh with this rule. Removed it
+sed -i -e 's/DefaultZone=drop/DefaultZone=public/' /mnt/ec2-image/etc/firewalld/firewalld.conf
+# scap turns off oddjobd; turn it back on
+chroot /mnt/ec2-image systemctl enable oddjobd
+
 umount /mnt/ec2-image/dev/shm
 umount /mnt/ec2-image/dev/pts
 umount /mnt/ec2-image/dev

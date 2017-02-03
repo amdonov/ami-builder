@@ -3,7 +3,7 @@ REPO=$2
 # Fail on error
 set -e
 
-mv /etc/yum.repos.d/* ~/
+mv /etc/yum.repos.d/* ~/ || true
 
 # Create the filesystems 
 parted /dev/xvdf --script 'mklabel msdos mkpart primary 1M 512M mkpart primary 512M -1s print quit'
@@ -165,7 +165,7 @@ chroot /mnt/ec2-image grub2-mkconfig -o /boot/grub2/grub.cfg
 chroot /mnt/ec2-image systemctl enable lvm2-lvmetad.service
 chroot /mnt/ec2-image systemctl enable lvm2-lvmetad.socket
 chroot /mnt/ec2-image fixfiles -f relabel
-chroot /mnt/ec2-image oscap xccdf eval --remediate --profile xccdf_org.ssgproject.content_profile_stig-rhel7-server-upstream /usr/share/xml/scap/ssg/content/ssg-centos7-ds.xml
+chroot /mnt/ec2-image oscap xccdf eval --remediate --profile xccdf_org.ssgproject.content_profile_stig-rhel7-server-upstream /usr/share/xml/scap/ssg/content/ssg-centos7-ds.xml || true
 # These remediatations weren't there. Perhaps a chroot issue
 cat >> /mnt/ec2-image/etc/ssh/sshd_config << EOF
 Protocol 2
@@ -190,7 +190,6 @@ EOF
 sed -i -e 's/DefaultZone=drop/DefaultZone=public/' /mnt/ec2-image/etc/firewalld/firewalld.conf
 # scap turns off oddjobd; turn it back on
 chroot /mnt/ec2-image systemctl enable oddjobd
-chroot /mnt/ec2-image history -c
  
 yum -c /opt/ec2/yum/yum.conf --installroot=/mnt/ec2-image -y clean all
 umount /mnt/ec2-image/sys/fs/selinux
