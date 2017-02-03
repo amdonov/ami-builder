@@ -7,6 +7,7 @@ AMI=$6
 AMIUSER=$7
 IAMROLE=$8
 REPO=$9
+GROUP_TAG=$10
 if [ "$REPO" = "default" ]; then
 sudo yum install -y epel-release
 else
@@ -47,6 +48,7 @@ realm: $REALM
 ansible_ssh_private_key_file: ansible.pem
 ansible_ssh_user: $AMIUSER
 software_repo: $REPO
+group_tag: $GROUP_TAG
 userdata: |
        #cloud-config
        hostname: {{ item.hostname }}
@@ -79,7 +81,7 @@ vms:
           tags:
            Name: "ipa1.{{ domain }}"
            type: ipa
-           version: 7.3
+           group: "{{ group_tag }}"
           security_groups:
            - ssh
            - ipa
@@ -92,7 +94,7 @@ vms:
           tags:
            Name: "ipa2.{{ domain }}"
            type: ipa
-           version: 7.3
+           group: "{{ group_tag }}"
           security_groups:
            - ssh
            - ipa
@@ -105,7 +107,7 @@ vms:
           tags:
            Name: "foreman.{{ domain }}"
            type: foreman
-           version: 7.3
+           group: "{{ group_tag }}"
           security_groups:
            - ssh
            - foreman
@@ -118,7 +120,7 @@ vms:
           tags:
            Name: "ansible.{{ domain }}"
            type: ansible
-           version: 7.3
+           group: "{{ group_tag }}"
           security_groups:
            - ssh
            - prov-server
@@ -131,7 +133,7 @@ vms:
           tags:
            Name: "jump.{{ domain }}"
            type: jump
-           version: 7.3
+           group: "{{ group_tag }}"
           security_groups:
            - jump
           public_ip: yes

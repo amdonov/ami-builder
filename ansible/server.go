@@ -18,6 +18,7 @@ import (
 )
 
 type ansible struct {
+	tag          string
 	user         string
 	clientRPM    string
 	serverRPM    string
@@ -31,8 +32,8 @@ type ansible struct {
 	repo         string
 }
 
-func NewAnsibleProvisioner(user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role, repo string) instance.Provisioner {
-	return &ansible{user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role, repo}
+func NewAnsibleProvisioner(tag, user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role, repo string) instance.Provisioner {
+	return &ansible{tag, user, clientRPM, serverRPM, ami, dns, organization, realm, domain, password, role, repo}
 }
 
 func (c *ansible) Provision(ip string, key []byte) error {
@@ -56,13 +57,18 @@ func (c *ansible) Provision(ip string, key []byte) error {
 	}
 	return client.RunCommand(func(session *ssh.Session) error {
 		session.Stdout = os.Stdout
-		return session.Run(fmt.Sprintf("/bin/bash ./server.sh %s %s %s %s %s %s %s %s %s",
-			c.password, c.domain, c.realm, c.organization, c.dns, c.ami, c.user, c.role, c.repo))
+		return session.Run(fmt.Sprintf("/bin/bash ./server.sh %s %s %s %s %s %s %s %s %s %s",
+			c.password, c.domain, c.realm, c.organization, c.dns, c.ami, c.user, c.role, c.repo, c.tag))
 	})
 }
 
-func makeRole(sess *session.Session, role string) error {
-	svc := iam.New(sess)
+func makeRole(sess *session.Session, iamEndpoint, role string) error {
+	var svc *iam.IAM
+	if iamEndpoint == "" {
+		svc = iam.New(sess)
+	} else {
+		svc = iam.New(sess, &aws.Config{Endpoint: aws.String(iamEndpoint)})
+	}
 	awsRole := aws.String(role)
 	_, err := svc.CreateInstanceProfile(&iam.CreateInstanceProfileInput{
 		InstanceProfileName: awsRole,
@@ -100,7 +106,7 @@ func makeRole(sess *session.Session, role string) error {
 	return err
 }
 
-func CreateProvisionServer(config *instance.Config, provisioner instance.Provisioner) error {
+func CreateProvisionServer(ec2Endpoint, iamEndpoint string, config *instance.Config, provisioner instance.Provisioner) error {
 	if "" == config.Subnet {
 		return errors.New("subnet is required")
 	}
@@ -108,12 +114,16 @@ func CreateProvisionServer(config *instance.Config, provisioner instance.Provisi
 	if err != nil {
 		return err
 	}
-	err = makeRole(sess, config.IAMRole)
+	err = makeRole(sess, iamEndpoint, config.IAMRole)
 	if err != nil {
 		return err
 	}
-
-	ec2Service := ec2.New(sess)
+	var ec2Service *ec2.EC2
+	if ec2Endpoint == "" {
+		ec2Service = ec2.New(sess)
+	} else {
+		ec2Service = ec2.New(sess, &aws.Config{Endpoint: aws.String(ec2Endpoint)})
+	}
 
 	i, err := instance.Start(ec2Service, config)
 	if err != nil {

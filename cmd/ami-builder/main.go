@@ -66,6 +66,18 @@ func main() {
 			Usage:  "Local IP address of server containing software",
 			EnvVar: "REPO_SERVER",
 		},
+		cli.StringFlag{
+			Name:   "ec2",
+			Value:  "",
+			Usage:  "Override EC2 Endpoint instead of using region",
+			EnvVar: "EC2_ENDPOINT",
+		},
+		cli.StringFlag{
+			Name:   "iam",
+			Value:  "",
+			Usage:  "Override IAM Endpoint instead of using region",
+			EnvVar: "IAM_ENDPOINT",
+		},
 	}
 	app.Commands = []cli.Command{
 		{
@@ -86,13 +98,18 @@ func main() {
 					Size:    c.GlobalString("size"),
 					Private: c.GlobalBool("private"),
 				}
-				return ami.CreateAMI(config, ami.NewCloudInitProvisioner(c.GlobalString("user"), c.String("newuser"), c.GlobalString("repo")))
+				return ami.CreateAMI(c.GlobalString("ec2"), config, ami.NewCloudInitProvisioner(c.GlobalString("user"), c.String("newuser"), c.GlobalString("repo")))
 			},
 		},
 		{
 			Name:  "prov-server",
 			Usage: "create a prov-server instance and core infrastructure",
 			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "tag",
+					Value: "default",
+					Usage: "group tag applied to vms",
+				},
 				cli.StringFlag{
 					Name:  "server-rpm",
 					Value: "",
@@ -160,8 +177,8 @@ func main() {
 					IAMRole:  c.String("iam"),
 					UserData: base64.StdEncoding.EncodeToString(data),
 				}
-				return ansible.CreateProvisionServer(config,
-					ansible.NewAnsibleProvisioner(c.GlobalString("user"), clientRPM, serverRPM,
+				return ansible.CreateProvisionServer(c.GlobalString("ec2"), c.GlobalString("iam"), config,
+					ansible.NewAnsibleProvisioner(c.String("tag"), c.GlobalString("user"), clientRPM, serverRPM,
 						c.GlobalString("ami"), c.String("dns"), c.String("org"), c.String("realm"),
 						c.String("domain"), c.String("password"), c.String("iam"), c.GlobalString("repo")))
 			},
@@ -208,7 +225,7 @@ func main() {
 					Private:  c.GlobalBool("private"),
 					UserData: base64.StdEncoding.EncodeToString(data),
 				}
-				return ami.CreateAMI(config, ami.NewProvClientProvisioner(c.GlobalString("user"), rpm, server, c.GlobalString("repo")))
+				return ami.CreateAMI(c.GlobalString("ec2"), config, ami.NewProvClientProvisioner(c.GlobalString("user"), rpm, server, c.GlobalString("repo")))
 			},
 		},
 	}

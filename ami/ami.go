@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
-func CreateAMI(config *instance.Config, provisioner instance.Provisioner) error {
+func CreateAMI(endpoint string, config *instance.Config, provisioner instance.Provisioner) error {
 	if "" == config.Subnet {
 		return errors.New("subnet is required")
 	}
@@ -18,7 +18,12 @@ func CreateAMI(config *instance.Config, provisioner instance.Provisioner) error 
 	if err != nil {
 		return err
 	}
-	ec2Service := ec2.New(sess)
+	var ec2Service *ec2.EC2
+	if endpoint == "" {
+		ec2Service = ec2.New(sess)
+	} else {
+		ec2Service = ec2.New(sess, &aws.Config{Endpoint: aws.String(endpoint)})
+	}
 
 	i, err := instance.Start(ec2Service, config)
 	if err != nil {
